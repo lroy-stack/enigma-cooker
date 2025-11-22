@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { PerspectiveCamera, Environment, Stars, SpotLight } from '@react-three/drei';
+import { PerspectiveCamera, Environment, SpotLight } from '@react-three/drei';
 import * as THREE from 'three';
 import { GameStatus, Lane, EntityType, GameEntity, GameState, Particle, FURY_DURATION, POWERUP_DURATION, BASE_SPEED, MAX_SPEED, FURY_SPEED_MULTIPLIER, JUMP_FORCE, GRAVITY } from '../types';
-import { ChefModel, EntityModel, KitchenCountertop, GiantProp, GiantBackgroundProp, InstancedParticles } from './GameModels';
+import { ChefModel, EntityModel, KitchenSegment, GiantProp, GiantBackgroundProp, InstancedParticles } from './GameModels';
 import { soundManager } from '../utils/sound';
 
 interface GameSceneProps {
@@ -127,7 +127,7 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
          props.push({
              id: `bg-${i}`,
              type,
-             x: isLeft ? -50 : 50,
+             x: isLeft ? -30 : 30,
              z: z,
              rotation: isLeft ? 0.5 : -0.5
          });
@@ -160,7 +160,7 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
       if (playerRef.current) playerRef.current.position.set(0,0,0);
       setRenderEntities([]);
       setCurrentTileIndex(0);
-      soundManager.playAmbient(); // Start ambient noise
+      soundManager.playAmbient();
     } else if (gameState.status === GameStatus.PLAYING) {
       stateRef.current.status = GameStatus.PLAYING;
     }
@@ -230,7 +230,6 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
               color
           });
       }
-      // Cap particles
       if (particlesRef.current.length > 300) {
           particlesRef.current = particlesRef.current.slice(particlesRef.current.length - 300);
       }
@@ -241,8 +240,7 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
 
     const dt = Math.min(delta, 0.1);
     const s = stateRef.current;
-    const time = state.clock.getElapsedTime();
-
+    
     // Speed & Score
     let targetSpeed = BASE_SPEED + (Math.abs(s.playerZ) * 0.005);
     if (s.furyTimer > 0) targetSpeed *= FURY_SPEED_MULTIPLIER;
@@ -253,7 +251,7 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
     s.playerZ -= s.speed * dt;
     s.score += (s.speed * dt) * 0.5;
 
-    // Update Tile Index for Floor
+    // Floor Tiling
     const newTileIndex = Math.floor(s.playerZ / TILE_LENGTH);
     if (newTileIndex !== currentTileIndex) {
         setCurrentTileIndex(newTileIndex);
@@ -292,8 +290,7 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
       if (playerRef.current) playerRef.current.position.y = s.playerY;
     }
 
-    // Particles & Environment Effects
-    // Chance to spawn steam from active pots/burners
+    // Particles & Effect Logic
     s.entities.forEach(e => {
         if (e.active && e.z > s.playerZ - 30 && e.z < s.playerZ + 10) {
              if ((e.type === EntityType.OBSTACLE_POT || e.type === EntityType.OBSTACLE_BURNER) && Math.random() < 0.1) {
@@ -306,8 +303,8 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
         const p = particlesRef.current[i];
         p.x += p.vx * dt;
         p.y += p.vy * dt;
-        p.z += p.vz * dt + (s.speed * dt * 0.1); // Drag
-        p.vy -= (p.life > 1.5 ? -2 : 5) * dt; // Steam rises then falls
+        p.z += p.vz * dt + (s.speed * dt * 0.1);
+        p.vy -= (p.life > 1.5 ? -2 : 5) * dt;
         p.life -= dt * 1.0;
         if (p.life <= 0 || p.y < 0) {
             particlesRef.current.splice(i, 1);
@@ -359,7 +356,7 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
       setRenderEntities([...s.entities]);
     }
 
-    // Collisions
+    // Collision Detection
     let needsUpdate = false;
     s.entities.forEach(entity => {
        if (!entity.active) return;
@@ -369,7 +366,7 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
            if (dist < 10) {
                entity.x = THREE.MathUtils.lerp(entity.x, playerRef.current!.position.x, dt * 5);
                entity.z = THREE.MathUtils.lerp(entity.z, s.playerZ, dt * 5);
-               needsUpdate = true; // Visual update needed
+               needsUpdate = true;
            }
        }
 
@@ -456,37 +453,37 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
     <>
       <PerspectiveCamera ref={cameraRef} makeDefault position={[0, 4, 8]} fov={60} />
       
-      <ambientLight intensity={0.6} color="#fff7ed" />
+      {/* --- Lighting & Atmosphere --- */}
+      <color attach="background" args={['#fff7ed']} />
+      <fog attach="fog" args={['#fff7ed', 20, 90]} />
+
+      <ambientLight intensity={0.8} color="#fff7ed" />
       <directionalLight 
         position={[20, 50, 10]} 
-        intensity={1.5} 
+        intensity={1.2} 
         castShadow 
-        shadow-mapSize={[512, 512]} 
-        shadow-bias={-0.001}
+        shadow-mapSize={[1024, 1024]} 
+        shadow-bias={-0.0005}
         color="#fff"
       />
       <SpotLight 
          position={[0, 10, stateRef.current.playerZ - 10]}
          angle={0.6}
          penumbra={0.5}
-         intensity={1.2}
+         intensity={1.0}
          color="#fbbf24"
          distance={50}
          target={playerRef.current || undefined}
       />
 
-      {/* Optimized Stars */}
-      <Stars radius={200} depth={50} count={300} factor={4} saturation={0} fade speed={0.5} />
-
-      {/* Continuous Floor - Render Behind (-1), Center (0), and Ahead (+1) based on direction */}
-      {/* Since Z is negative, index -1 is ahead of index 0. We need current +1 (behind), current, current -1 (ahead) */}
+      {/* --- Infinite Room (Floor + Walls) --- */}
       <group>
-           <KitchenCountertop position={[0, -0.05, (currentTileIndex + 1) * TILE_LENGTH]} />
-           <KitchenCountertop position={[0, -0.05, currentTileIndex * TILE_LENGTH]} />
-           <KitchenCountertop position={[0, -0.05, (currentTileIndex - 1) * TILE_LENGTH]} />
+           <KitchenSegment position={[0, 0, (currentTileIndex + 1) * TILE_LENGTH]} />
+           <KitchenSegment position={[0, 0, currentTileIndex * TILE_LENGTH]} />
+           <KitchenSegment position={[0, 0, (currentTileIndex - 1) * TILE_LENGTH]} />
       </group>
 
-      {/* Mid-Range Background Props */}
+      {/* --- Giant Props --- */}
       {sideProps.map(prop => {
           const loopLength = 600;
           const relativeZ = (prop.z - stateRef.current.playerZ) % loopLength;
@@ -505,7 +502,6 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
           );
       })}
 
-      {/* Distant Background Props (Parallax Layer) */}
       {distantProps.map(prop => {
           const loopLength = 1500;
           const relativeZ = (prop.z - stateRef.current.playerZ) % loopLength;
@@ -530,6 +526,7 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
             isJumping={stateRef.current.isJumping}
             shieldActive={stateRef.current.shieldActive}
         />
+        {/* Shadow Blob */}
         <mesh rotation={[-Math.PI/2, 0, 0]} position={[0, 0.02, 0]}>
             <circleGeometry args={[0.4, 32]} />
             <meshBasicMaterial color="black" opacity={0.3} transparent />
@@ -544,7 +541,6 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
           )
       ))}
 
-      {/* Instanced Particles (Shared for effects) */}
       <InstancedParticles particlesRef={particlesRef} />
     </>
   );
@@ -552,9 +548,9 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
 
 export default function GameScene(props: GameSceneProps) {
   return (
-    <Canvas shadows dpr={[1, 1.5]} gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, powerPreference: "high-performance" }}>
+    <Canvas shadows dpr={[1, 1.5]} gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}>
       <GameLogic {...props} />
-      <Environment preset="city" blur={0.8} />
+      <Environment preset="city" blur={1} />
     </Canvas>
   );
 }
