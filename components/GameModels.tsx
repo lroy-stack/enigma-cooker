@@ -1,206 +1,163 @@
 
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { EntityType, Particle } from '../types';
 
-// --- Procedural Texture Generation ---
-const useProceduralTextures = () => {
-    return useMemo(() => {
-        const width = 512;
-        const height = 512;
+// --- Singleton Texture Cache ---
+let textureCache: { floor: THREE.CanvasTexture; wall: THREE.CanvasTexture } | null = null;
 
-        // Helper to add noise/grain
-        const addNoise = (ctx: CanvasRenderingContext2D, w: number, h: number, amount: number) => {
-             ctx.globalCompositeOperation = 'overlay';
-             for(let i=0; i< 8000; i++) {
-                 ctx.fillStyle = Math.random() > 0.5 ? '#000' : '#fff';
-                 ctx.globalAlpha = 0.03 * amount;
-                 const x = Math.random() * w;
-                 const y = Math.random() * h;
-                 ctx.fillRect(x, y, 2, 2);
-             }
-             ctx.globalCompositeOperation = 'source-over';
-             ctx.globalAlpha = 1.0;
-        };
-        
-        // 1. Wood Texture (Butcher Block Floor)
-        const canvasWood = document.createElement('canvas');
-        canvasWood.width = width;
-        canvasWood.height = height;
-        const ctxWood = canvasWood.getContext('2d');
-        if (ctxWood) {
-            ctxWood.fillStyle = '#78350f'; 
-            ctxWood.fillRect(0, 0, width, height);
-            
-            const plankWidth = 64;
-            for (let i = 0; i < width / plankWidth; i++) {
-                const hue = 30 + Math.random() * 5;
-                const sat = 70 + Math.random() * 15;
-                const lig = 20 + Math.random() * 10;
-                ctxWood.fillStyle = `hsl(${hue}, ${sat}%, ${lig}%)`;
-                ctxWood.fillRect(i * plankWidth, 0, plankWidth, height);
-                
-                ctxWood.strokeStyle = '#451a03';
-                ctxWood.globalAlpha = 0.2;
-                ctxWood.beginPath();
-                for(let j=0; j<30; j++) {
-                    const xStart = i * plankWidth + Math.random() * plankWidth;
-                    ctxWood.moveTo(xStart, 0);
-                    ctxWood.bezierCurveTo(
-                        xStart + (Math.random()-0.5)*20, height/3,
-                        xStart + (Math.random()-0.5)*20, 2*height/3,
-                        xStart + (Math.random()-0.5)*10, height
-                    );
-                }
-                ctxWood.stroke();
-                
-                // Knots
-                for(let k=0; k<2; k++) {
-                    if(Math.random() > 0.7) continue;
-                    const kx = i * plankWidth + Math.random() * plankWidth;
-                    const ky = Math.random() * height;
-                    const kr = 3 + Math.random() * 4;
-                    ctxWood.fillStyle = '#3f1d08';
-                    ctxWood.beginPath();
-                    ctxWood.ellipse(kx, ky, kr, kr*2.5, Math.random(), 0, Math.PI*2);
-                    ctxWood.fill();
-                }
-                ctxWood.globalAlpha = 1.0;
-                ctxWood.fillStyle = '#1a0f0a';
-                ctxWood.fillRect((i+1)*plankWidth - 2, 0, 2, height);
+const getSharedTextures = () => {
+    if (textureCache) return textureCache;
+
+    const width = 512;
+    const height = 512;
+
+    // Helper to add noise/grain
+    const addNoise = (ctx: CanvasRenderingContext2D, w: number, h: number, amount: number) => {
+            ctx.globalCompositeOperation = 'overlay';
+            for(let i=0; i< 8000; i++) {
+                ctx.fillStyle = Math.random() > 0.5 ? '#000' : '#fff';
+                ctx.globalAlpha = 0.03 * amount;
+                const x = Math.random() * w;
+                const y = Math.random() * h;
+                ctx.fillRect(x, y, 2, 2);
             }
-            addNoise(ctxWood, width, height, 1.5);
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.globalAlpha = 1.0;
+    };
+    
+    // 1. Wood Texture (Butcher Block Floor)
+    const canvasWood = document.createElement('canvas');
+    canvasWood.width = width;
+    canvasWood.height = height;
+    const ctxWood = canvasWood.getContext('2d');
+    if (ctxWood) {
+        ctxWood.fillStyle = '#78350f'; 
+        ctxWood.fillRect(0, 0, width, height);
+        
+        const plankWidth = 64;
+        for (let i = 0; i < width / plankWidth; i++) {
+            const hue = 30 + Math.random() * 5;
+            const sat = 70 + Math.random() * 15;
+            const lig = 20 + Math.random() * 10;
+            ctxWood.fillStyle = `hsl(${hue}, ${sat}%, ${lig}%)`;
+            ctxWood.fillRect(i * plankWidth, 0, plankWidth, height);
             
-            // Scratches
-            ctxWood.strokeStyle = '#9a6340'; 
+            ctxWood.strokeStyle = '#451a03';
             ctxWood.globalAlpha = 0.2;
             ctxWood.beginPath();
-            for(let s=0; s<80; s++) {
-                const sx = Math.random() * width;
-                const sy = Math.random() * height;
-                ctxWood.moveTo(sx, sy);
-                ctxWood.lineTo(sx + (Math.random()-0.5)*40, sy + (Math.random()-0.5)*40);
+            for(let j=0; j<30; j++) {
+                const xStart = i * plankWidth + Math.random() * plankWidth;
+                ctxWood.moveTo(xStart, 0);
+                ctxWood.bezierCurveTo(
+                    xStart + (Math.random()-0.5)*20, height/3,
+                    xStart + (Math.random()-0.5)*20, 2*height/3,
+                    xStart + (Math.random()-0.5)*10, height
+                );
             }
             ctxWood.stroke();
             
-            ctxWood.globalAlpha = 0.1;
-            ctxWood.fillStyle = '#1a0f0a';
-            for(let p=0; p<5; p++) {
-                const px = Math.random() * width;
-                const py = Math.random() * height;
-                const pr = 20 + Math.random() * 50;
+            // Knots
+            for(let k=0; k<2; k++) {
+                if(Math.random() > 0.7) continue;
+                const kx = i * plankWidth + Math.random() * plankWidth;
+                const ky = Math.random() * height;
+                const kr = 3 + Math.random() * 4;
+                ctxWood.fillStyle = '#3f1d08';
                 ctxWood.beginPath();
-                ctxWood.arc(px, py, pr, 0, Math.PI*2);
+                ctxWood.ellipse(kx, ky, kr, kr*2.5, Math.random(), 0, Math.PI*2);
                 ctxWood.fill();
             }
             ctxWood.globalAlpha = 1.0;
+            ctxWood.fillStyle = '#1a0f0a';
+            ctxWood.fillRect((i+1)*plankWidth - 2, 0, 2, height);
         }
-        const texWood = new THREE.CanvasTexture(canvasWood);
-        texWood.wrapS = THREE.RepeatWrapping;
-        texWood.wrapT = THREE.RepeatWrapping;
-        texWood.repeat.set(5, 10);
+        addNoise(ctxWood, width, height, 1.5);
         
-        // 2. Tile Texture (Walls)
-        const canvasTile = document.createElement('canvas');
-        canvasTile.width = width;
-        canvasTile.height = height;
-        const ctxTile = canvasTile.getContext('2d');
-        if (ctxTile) {
-            ctxTile.fillStyle = '#cbd5e1'; 
-            ctxTile.fillRect(0, 0, width, height);
-            addNoise(ctxTile, width, height, 1.0);
-            ctxTile.fillStyle = 'rgba(0,0,0,0.1)';
-            for(let g=0; g<50; g++) {
-                 ctxTile.fillRect(Math.random()*width, Math.random()*height, Math.random()*50, 2);
-            }
-            
-            const tileSizeW = 128;
-            const tileSizeH = 64;
-            const gap = 4;
+        // Scratches
+        ctxWood.strokeStyle = '#9a6340'; 
+        ctxWood.globalAlpha = 0.2;
+        ctxWood.beginPath();
+        for(let s=0; s<80; s++) {
+            const sx = Math.random() * width;
+            const sy = Math.random() * height;
+            ctxWood.moveTo(sx, sy);
+            ctxWood.lineTo(sx + (Math.random()-0.5)*40, sy + (Math.random()-0.5)*40);
+        }
+        ctxWood.stroke();
+    }
+    const texWood = new THREE.CanvasTexture(canvasWood);
+    texWood.wrapS = THREE.RepeatWrapping;
+    texWood.wrapT = THREE.RepeatWrapping;
+    texWood.repeat.set(5, 10);
+    
+    // 2. Tile Texture (Walls)
+    const canvasTile = document.createElement('canvas');
+    canvasTile.width = width;
+    canvasTile.height = height;
+    const ctxTile = canvasTile.getContext('2d');
+    if (ctxTile) {
+        ctxTile.fillStyle = '#cbd5e1'; 
+        ctxTile.fillRect(0, 0, width, height);
+        addNoise(ctxTile, width, height, 1.0);
+        ctxTile.fillStyle = 'rgba(0,0,0,0.1)';
+        for(let g=0; g<50; g++) {
+                ctxTile.fillRect(Math.random()*width, Math.random()*height, Math.random()*50, 2);
+        }
+        
+        const tileSizeW = 128;
+        const tileSizeH = 64;
+        const gap = 4;
 
-            for(let y=0; y<height/tileSizeH; y++) {
-                const offset = y % 2 === 0 ? 0 : -tileSizeW/2;
-                for(let x=0; x<(width/tileSizeW)+1; x++) {
-                    const val = 230 + Math.random() * 25;
-                    ctxTile.fillStyle = `rgb(${val}, ${val}, ${val})`;
-                    
-                    const drawX = x*tileSizeW + offset + gap/2;
-                    const drawY = y*tileSizeH + gap/2;
-                    const drawW = tileSizeW - gap;
-                    const drawH = tileSizeH - gap;
-                    
-                    ctxTile.fillRect(drawX, drawY, drawW, drawH);
+        for(let y=0; y<height/tileSizeH; y++) {
+            const offset = y % 2 === 0 ? 0 : -tileSizeW/2;
+            for(let x=0; x<(width/tileSizeW)+1; x++) {
+                const val = 230 + Math.random() * 25;
+                ctxTile.fillStyle = `rgb(${val}, ${val}, ${val})`;
+                
+                const drawX = x*tileSizeW + offset + gap/2;
+                const drawY = y*tileSizeH + gap/2;
+                const drawW = tileSizeW - gap;
+                const drawH = tileSizeH - gap;
+                
+                ctxTile.fillRect(drawX, drawY, drawW, drawH);
 
-                    ctxTile.fillStyle = 'rgba(255,255,255,0.6)';
-                    ctxTile.fillRect(drawX, drawY, drawW, 3);
-                    ctxTile.fillRect(drawX, drawY, 3, drawH);
-                    
-                    ctxTile.fillStyle = 'rgba(0,0,0,0.1)';
-                    ctxTile.fillRect(drawX, drawY + drawH - 3, drawW, 3);
-                    ctxTile.fillRect(drawX + drawW - 3, drawY, 3, drawH);
+                ctxTile.fillStyle = 'rgba(255,255,255,0.6)';
+                ctxTile.fillRect(drawX, drawY, drawW, 3);
+                ctxTile.fillRect(drawX, drawY, 3, drawH);
+                
+                ctxTile.fillStyle = 'rgba(0,0,0,0.1)';
+                ctxTile.fillRect(drawX, drawY + drawH - 3, drawW, 3);
+                ctxTile.fillRect(drawX + drawW - 3, drawY, 3, drawH);
 
-                    if (Math.random() < 0.08) {
-                         const chipSize = 4 + Math.random() * 8;
-                         ctxTile.fillStyle = '#94a3b8'; 
-                         ctxTile.beginPath();
-                         if (Math.random() > 0.5) {
-                             ctxTile.moveTo(drawX + drawW, drawY + drawH - chipSize);
-                             ctxTile.lineTo(drawX + drawW, drawY + drawH);
-                             ctxTile.lineTo(drawX + drawW - chipSize, drawY + drawH);
-                         } else {
-                             ctxTile.moveTo(drawX, drawY + chipSize);
-                             ctxTile.lineTo(drawX, drawY);
-                             ctxTile.lineTo(drawX + chipSize, drawY);
-                         }
-                         ctxTile.fill();
-                    }
-
-                    if (Math.random() < 0.04) {
-                        ctxTile.strokeStyle = 'rgba(0,0,0,0.2)';
-                        ctxTile.lineWidth = 1;
+                if (Math.random() < 0.08) {
+                        const chipSize = 4 + Math.random() * 8;
+                        ctxTile.fillStyle = '#94a3b8'; 
                         ctxTile.beginPath();
-                        const startX = drawX + Math.random() * drawW;
-                        const startY = drawY;
-                        ctxTile.moveTo(startX, startY);
-                        ctxTile.lineTo(startX + (Math.random()-0.5)*20, drawY + drawH);
-                        ctxTile.stroke();
-                    }
+                        if (Math.random() > 0.5) {
+                            ctxTile.moveTo(drawX + drawW, drawY + drawH - chipSize);
+                            ctxTile.lineTo(drawX + drawW, drawY + drawH);
+                            ctxTile.lineTo(drawX + drawW - chipSize, drawY + drawH);
+                        } else {
+                            ctxTile.moveTo(drawX, drawY + chipSize);
+                            ctxTile.lineTo(drawX, drawY);
+                            ctxTile.lineTo(drawX + chipSize, drawY);
+                        }
+                        ctxTile.fill();
                 }
             }
-            addNoise(ctxTile, width, height, 0.6);
-            
-            ctxTile.globalAlpha = 0.05;
-            ctxTile.fillStyle = '#d97706'; 
-            for(let i=0; i<15; i++) {
-                 const dx = Math.random() * width;
-                 const dy = Math.random() * height;
-                 const dw = 4 + Math.random() * 12;
-                 const dh = 30 + Math.random() * 100;
-                 ctxTile.fillRect(dx, dy, dw, dh);
-            }
-            ctxTile.globalAlpha = 1.0;
-
-            ctxTile.globalAlpha = 0.1;
-            for(let i=0; i<30; i++) {
-                ctxTile.fillStyle = Math.random() > 0.5 ? '#78350f' : '#334155';
-                const gx = Math.random() * width;
-                const gy = Math.random() * height;
-                const gr = 2 + Math.random() * 8;
-                ctxTile.beginPath();
-                ctxTile.arc(gx, gy, gr, 0, Math.PI*2);
-                ctxTile.fill();
-            }
-            ctxTile.globalAlpha = 1.0;
         }
-        const texTile = new THREE.CanvasTexture(canvasTile);
-        texTile.wrapS = THREE.RepeatWrapping;
-        texTile.wrapT = THREE.RepeatWrapping;
-        texTile.repeat.set(2, 5);
+        addNoise(ctxTile, width, height, 0.6);
+    }
+    const texTile = new THREE.CanvasTexture(canvasTile);
+    texTile.wrapS = THREE.RepeatWrapping;
+    texTile.wrapT = THREE.RepeatWrapping;
+    texTile.repeat.set(2, 5);
 
-        return { floor: texWood, wall: texTile };
-    }, []);
+    textureCache = { floor: texWood, wall: texTile };
+    return textureCache;
 };
 
 const materials = {
@@ -217,6 +174,8 @@ const materials = {
     glowPurple: new THREE.MeshStandardMaterial({ color: "#a855f7", emissive: "#a855f7", emissiveIntensity: 2, toneMapped: false }),
     oil: new THREE.MeshStandardMaterial({ color: "#1c1917", roughness: 0, metalness: 0.2, transparent: true, opacity: 0.9 }),
     ceiling: new THREE.MeshStandardMaterial({ color: "#f1f5f9", roughness: 0.9 }),
+    floorBase: new THREE.MeshStandardMaterial({ color: "#78350f", roughness: 0.8 }), // Fallback
+    wallBase: new THREE.MeshStandardMaterial({ color: "#cbd5e1", roughness: 0.8 }), // Fallback
 };
 
 export const ChefModel = ({ isFury, isJumping, shieldActive }: { isFury: boolean; isJumping: boolean, shieldActive: boolean }) => {
@@ -316,11 +275,11 @@ export const EntityModel = React.memo(({ type, letter, variant, customState }: {
     
     if (type === EntityType.ITEM_LETTER) {
         meshRef.current.rotation.y = Math.sin(state.clock.getElapsedTime() * 2) * 0.5;
-        meshRef.current.position.y = 1 + Math.sin(state.clock.getElapsedTime() * 3) * 0.2;
+        meshRef.current.position.y = 0.8 + Math.sin(state.clock.getElapsedTime() * 3) * 0.2; // Lowered slightly
     } else if (type === EntityType.OBSTACLE_KNIFE) {
        meshRef.current.rotation.z = Math.sin(state.clock.getElapsedTime() * 5) * 0.1;
     } else if (type === EntityType.OBSTACLE_BURNER) {
-       // Static or flashing managed below
+       // Static or flashing
     } else if (type === EntityType.OBSTACLE_OIL) {
         // Flat
     } else {
@@ -356,7 +315,7 @@ export const EntityModel = React.memo(({ type, letter, variant, customState }: {
   }
 
   if (type === EntityType.OBSTACLE_KNIFE) {
-    const isFalling = customState === 1; // 1 = Falling state logic
+    const isFalling = customState === 1; 
     return (
       <group ref={meshRef} position={[0, isFalling ? 0 : 1.5, 0]}>
         <mesh castShadow position={[0, 0.5, 0]}>
@@ -411,9 +370,7 @@ export const EntityModel = React.memo(({ type, letter, variant, customState }: {
     );
   }
   if (type === EntityType.OBSTACLE_BURNER) {
-      // Custom state 0 = OFF, 1 = ON (if flashing variant)
       const isOn = variant === 1 ? (customState === 1) : true;
-      
       return (
           <group ref={meshRef} position={[0, 0.1, 0]}>
               <mesh receiveShadow>
@@ -487,12 +444,12 @@ export const EntityModel = React.memo(({ type, letter, variant, customState }: {
       return (
           <group ref={meshRef}>
               <Text
-                font="https://fonts.gstatic.com/s/fredokaone/v8/k3kUo8kEI-tA1RRcTZGmGmHHE795.woff"
                 fontSize={1.5}
                 color="#a855f7"
                 outlineWidth={0.1}
                 outlineColor="#ffffff"
-                characters="ENIGMA"
+                anchorX="center"
+                anchorY="middle"
               >
                 {letter}
               </Text>
@@ -559,10 +516,10 @@ export const EntityModel = React.memo(({ type, letter, variant, customState }: {
 // --- Environment ---
 
 export const GiantProp = React.memo(({ type, x, z, rotation }: { type: string, x: number, z: number, rotation: number }) => {
-    // Updated: Much smaller scales to look like realistic kitchen clutter, not giants
+    // Further reduced scales to ensure they aren't ridiculous in portrait mode
     if (type === 'toaster') {
         return (
-            <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[1.5, 1.5, 1.5]}>
+            <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[0.8, 0.8, 0.8]}>
                 <mesh castShadow receiveShadow position={[0, 1, 0]}>
                     <boxGeometry args={[2, 1.5, 1]} />
                     <primitive object={materials.metal} />
@@ -576,7 +533,7 @@ export const GiantProp = React.memo(({ type, x, z, rotation }: { type: string, x
     }
     if (type === 'flour') {
         return (
-             <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[1.2, 1.2, 1.2]}>
+             <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[0.7, 0.7, 0.7]}>
                 <mesh castShadow position={[0, 1.5, 0]}>
                     <boxGeometry args={[1.5, 3, 1]} />
                     <meshStandardMaterial color="#fef3c7" roughness={1} />
@@ -590,7 +547,7 @@ export const GiantProp = React.memo(({ type, x, z, rotation }: { type: string, x
     }
     if (type === 'milk') {
         return (
-            <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[1.4, 1.4, 1.4]}>
+            <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[0.7, 0.7, 0.7]}>
                  <mesh castShadow position={[0, 2, 0]}>
                     <boxGeometry args={[1.5, 4, 1.5]} />
                     <meshStandardMaterial color="#3b82f6" roughness={0.8} />
@@ -606,10 +563,10 @@ export const GiantProp = React.memo(({ type, x, z, rotation }: { type: string, x
 });
 
 export const GiantBackgroundProp = React.memo(({ type, x, z, rotation }: { type: string, x: number, z: number, rotation: number }) => {
-  // Updated: Scaled to fit inside the new narrower walls without clipping heavily
+  // Reduced background prop scale to avoid clipping through walls/fog too aggressively
   if (type === 'fridge') {
      return (
-       <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[5, 5, 5]}>
+       <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[3, 3, 3]}>
           <mesh castShadow receiveShadow position={[0, 2.5, 0]}>
              <boxGeometry args={[2, 5, 2]} />
              <meshStandardMaterial color="#f1f5f9" metalness={0.3} roughness={0.2} />
@@ -623,7 +580,7 @@ export const GiantBackgroundProp = React.memo(({ type, x, z, rotation }: { type:
   }
   if (type === 'cabinet') {
     return (
-      <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[5, 5, 5]}>
+      <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[3, 3, 3]}>
          <mesh castShadow receiveShadow position={[0, 2, 0]}>
             <boxGeometry args={[4, 4, 2]} />
             <meshStandardMaterial color="#fcd34d" roughness={0.8} />
@@ -635,7 +592,8 @@ export const GiantBackgroundProp = React.memo(({ type, x, z, rotation }: { type:
 });
 
 export const KitchenSegment = React.memo(({ position }: { position: [number, number, number] }) => {
-    const textures = useProceduralTextures();
+    // Use shared textures to prevent re-generating per segment per frame
+    const textures = getSharedTextures();
     
     return (
         <group position={position}>
@@ -643,7 +601,8 @@ export const KitchenSegment = React.memo(({ position }: { position: [number, num
             <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, -0.05, 0]}>
                 <planeGeometry args={[22, 100]} />
                 <meshStandardMaterial 
-                    map={textures.floor}
+                    map={textures?.floor || null}
+                    color={textures?.floor ? "white" : "#78350f"}
                     roughness={0.8}
                 />
             </mesh>
@@ -651,13 +610,19 @@ export const KitchenSegment = React.memo(({ position }: { position: [number, num
             {/* Left Wall - Tiled */}
             <mesh rotation={[0, Math.PI / 2, 0]} position={[-11, 25, 0]}>
                 <planeGeometry args={[100, 50]} />
-                <meshStandardMaterial map={textures.wall} />
+                <meshStandardMaterial 
+                    map={textures?.wall || null} 
+                    color={textures?.wall ? "white" : "#cbd5e1"}
+                />
             </mesh>
 
             {/* Right Wall - Tiled */}
             <mesh rotation={[0, -Math.PI / 2, 0]} position={[11, 25, 0]}>
                 <planeGeometry args={[100, 50]} />
-                <meshStandardMaterial map={textures.wall} />
+                <meshStandardMaterial 
+                    map={textures?.wall || null}
+                    color={textures?.wall ? "white" : "#cbd5e1"}
+                />
             </mesh>
 
             {/* Ceiling */}
@@ -693,7 +658,6 @@ export const InstancedParticles = ({ particlesRef }: { particlesRef: React.Mutab
             dummy.current.updateMatrix();
             meshRef.current.setMatrixAt(i, dummy.current.matrix);
             
-            // Simple color variation based on life/type (hardcoded white for simplicity here, can be expanded)
             const color = new THREE.Color(p.color);
             meshRef.current.setColorAt(i, color);
         }

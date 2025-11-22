@@ -194,7 +194,6 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
           const z = -i * 30;
           const isLeft = i % 2 === 0;
           const type = ['toaster', 'flour', 'milk'][Math.floor(Math.random() * 3)];
-          // Corrected Scale placement: +/- 8 to be outside lanes but visible
           props.push({ 
               id: i, 
               type, 
@@ -223,7 +222,6 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
       return props;
   }, []);
 
-  // Sync GameState changes
   useEffect(() => {
       if (gameState.status === GameStatus.MENU) {
           stateRef.current = {
@@ -253,16 +251,14 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
           soundManager.playAmbient();
       } else {
           stateRef.current.status = gameState.status;
-          // Update difficulty settings if level changed
           stateRef.current.difficultySettings = getDifficultySettings(gameState.difficulty, gameState.level);
       }
   }, [gameState.status, gameState.difficulty, gameState.level]);
 
-  // Controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (stateRef.current.status !== GameStatus.PLAYING) return;
-      if (stateRef.current.slipTimer > 0) return; // No control while slipping
+      if (stateRef.current.slipTimer > 0) return; 
 
       if (e.key === 'ArrowLeft' || e.key === 'a') {
         if (stateRef.current.playerLane === Lane.RIGHT) stateRef.current.playerLane = Lane.MIDDLE;
@@ -369,7 +365,6 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
     if (s.slipTimer > 0) {
         s.slipTimer -= dt;
         if (s.slipTimer <= 0) setGameState(prev => ({ ...prev, isSlipping: false }));
-        // Spin player while slipping
         if (playerRef.current) playerRef.current.rotation.y += dt * 10;
     } else {
         if (playerRef.current) playerRef.current.rotation.y = 0;
@@ -380,7 +375,6 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
       const targetX = s.playerLane * (LANE_WIDTH / 2);
       
       if (s.slipTimer > 0) {
-          // Drifting when slipping
           playerRef.current.position.x += Math.sin(time * 10) * dt * 5;
       } else {
           playerRef.current.position.x = THREE.MathUtils.lerp(playerRef.current.position.x, targetX, dt * 12);
@@ -403,30 +397,19 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
       if (playerRef.current) playerRef.current.position.y = s.playerY;
     }
 
-    // 6. Entity Logic (Movement & Particles)
+    // 6. Entity Logic
     s.entities.forEach(e => {
         if (e.active && e.z > s.playerZ - 40 && e.z < s.playerZ + 10) {
-            // Moving logic
-            if (e.type === EntityType.OBSTACLE_POT && e.initialX !== undefined) {
-               // Moving pot logic
-            }
-            
-            // Falling logic
-            if (e.state === 1 && e.y > 0) {
-                 if (e.z > s.playerZ - 30) { // Start falling when close
-                     e.y -= 15 * dt;
-                     if (e.y < 0) e.y = 0;
-                 }
+            if (e.state === 1 && e.y > 0 && e.z > s.playerZ - 30) {
+                 e.y -= 15 * dt;
+                 if (e.y < 0) e.y = 0;
             }
 
-            // Flashing Logic
             if (e.type === EntityType.OBSTACLE_BURNER && e.variant === 1) {
-                // Toggle state every 1.5s based on time
                 const cycle = Math.floor(time / 1.5);
                 e.state = cycle % 2;
             }
 
-            // Particles
             if ((e.type === EntityType.OBSTACLE_POT || (e.type === EntityType.OBSTACLE_BURNER && e.state === 1)) && Math.random() < 0.1) {
                  spawnParticles(e.x, 1, e.z, "white", 1, true);
             }
@@ -438,7 +421,7 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
         const p = particlesRef.current[i];
         p.x += p.vx * dt;
         p.y += p.vy * dt;
-        p.z += p.vz * dt + (s.speed * dt * 0.1); // Move with world relative speed
+        p.z += p.vz * dt + (s.speed * dt * 0.1);
         p.vy -= (p.life > 1.5 ? -2 : 5) * dt;
         p.life -= dt * 1.0;
         if (p.life <= 0 || p.y < 0) {
@@ -471,17 +454,15 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
     }
 
     // 9. Spawning System
-    if (s.playerZ - s.lastSpawnZ < -s.difficultySettings.spawnDist / 4) { // Spawn frequently in small chunks
+    if (s.playerZ - s.lastSpawnZ < -s.difficultySettings.spawnDist / 4) {
       s.lastSpawnZ = s.playerZ;
       const spawnZ = s.playerZ - s.difficultySettings.spawnDist;
       
       const r = Math.random();
       let newEntities: GameEntity[] = [];
-      
       const nextLetter = getNextLetter(gameState.collectedLetters);
       
-      // Priority: Letter -> Powerup -> Obstacles
-      if (nextLetter && r < 0.08) { // 8% chance for letter
+      if (nextLetter && r < 0.08) {
           const lane = [Lane.LEFT, Lane.MIDDLE, Lane.RIGHT][Math.floor(Math.random() * 3)];
           newEntities.push({
               id: `letter-${Date.now()}`,
@@ -489,13 +470,12 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
               letter: nextLetter,
               x: lane,
               z: spawnZ,
-              y: 1,
+              y: 1, // Spawn height
               active: true
           });
       } else if (r < 0.12 && !s.activePowerup) {
           newEntities = createPowerupPattern(spawnZ, gameState.difficulty);
       } else {
-          // Choose obstacle pattern
           const patternRoll = Math.random();
           if (patternRoll < 0.2) newEntities = createSingleLinePattern(spawnZ, gameState.difficulty);
           else if (patternRoll < 0.4) newEntities = createWallPattern(spawnZ, gameState.difficulty);
@@ -503,15 +483,12 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
           else if (patternRoll < 0.6 && gameState.difficulty !== Difficulty.EASY) newEntities = createFlashingBurnersPattern(spawnZ, gameState.difficulty);
           else if (patternRoll < 0.7) newEntities = createHazardsPattern(spawnZ, gameState.difficulty);
           else {
-             // Random Single Obstacle
              const lane = [Lane.LEFT, Lane.MIDDLE, Lane.RIGHT][Math.floor(Math.random()*3)];
              const type = Math.random() > 0.5 ? EntityType.OBSTACLE_KNIFE : EntityType.OBSTACLE_BURNER;
              newEntities.push({ id: Math.random().toString(), type, x: lane, z: spawnZ, y: 0, active: true });
           }
       }
-      
       s.entities.push(...newEntities);
-      // Despawn old
       s.entities = s.entities.filter(e => e.z < s.playerZ + 10 && e.active);
       setRenderEntities([...s.entities]);
     }
@@ -521,7 +498,6 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
     s.entities.forEach(entity => {
        if (!entity.active) return;
 
-       // Magnet Logic
        if (s.activePowerup === EntityType.POWERUP_MAGNET && (entity.type.startsWith('ITEM') || entity.type === EntityType.ITEM_LETTER)) {
            const dist = Math.sqrt(Math.pow(entity.x - playerRef.current!.position.x, 2) + Math.pow(entity.z - s.playerZ, 2));
            if (dist < 15) {
@@ -534,24 +510,24 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
        const dz = Math.abs(entity.z - s.playerZ);
        const dx = Math.abs(entity.x - (playerRef.current?.position.x || 0));
        const dy = Math.abs(entity.y - s.playerY);
+       
+       // Collision Logic: Higher vertical threshold (2.0) for items so running players can collect floating objects
+       const isItem = entity.type.startsWith('ITEM') || entity.type.startsWith('POWERUP');
+       const dyThreshold = isItem ? 2.0 : 1.0; 
 
-       // Collision check
-       if (dz < COLLISION_THRESHOLD && dx < 0.7 && dy < 1.0) {
+       if (dz < COLLISION_THRESHOLD && dx < 0.7 && dy < dyThreshold) {
          
-         // --- ITEMS ---
          if (entity.type.startsWith('ITEM')) {
             entity.active = false;
             needsUpdate = true;
             
             if (entity.type === EntityType.ITEM_LETTER && entity.letter) {
-                 // Collected Letter
                  const newCollected = [...gameState.collectedLetters, entity.letter];
                  soundManager.playLetterCollect();
                  spawnParticles(entity.x, 1, entity.z, "#a855f7", 10);
                  setGameState(prev => ({ ...prev, collectedLetters: newCollected }));
 
                  if (newCollected.length === TARGET_WORD.length) {
-                     // LEVEL UP
                      soundManager.playLevelUp();
                      setGameState(prev => ({ 
                          ...prev, 
@@ -560,17 +536,13 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
                          score: prev.score + 1000
                      }));
                  }
-
             } else {
-                // Ingredients
                 soundManager.playCollect();
                 s.score += 50;
                 spawnParticles(entity.x, 0.5, entity.z, "gold", 5);
-                
                 const newIngredients = [...s.ingredients, entity.type];
                 if (newIngredients.length > 3) newIngredients.shift();
                 s.ingredients = newIngredients;
-                
                 if (!s.furyTimer && newIngredients.length === 3) {
                     const unique = new Set(newIngredients);
                     if (unique.size >= 2) { 
@@ -584,7 +556,6 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
             }
 
          } else if (entity.type.startsWith('POWERUP')) {
-             // --- POWERUPS ---
             entity.active = false;
             needsUpdate = true;
             soundManager.playPowerup(
@@ -600,26 +571,22 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
             }));
 
          } else if (entity.type === EntityType.OBSTACLE_OIL) {
-             // --- OIL SPILL ---
              entity.active = false;
              soundManager.playSlip();
              s.slipTimer = 2.0;
              setGameState(prev => ({ ...prev, isSlipping: true }));
 
          } else if (entity.type === EntityType.DECOR_SPOON) {
-             // --- DECOR PHYSICS ---
              entity.active = false;
              soundManager.playClank();
-             // Physics impulse effect (fake physics)
              spawnParticles(entity.x, 0.5, entity.z, "gray", 3);
              needsUpdate = true;
 
          } else {
-            // --- OBSTACLES ---
+            // Obstacles
             const isJumpable = entity.type === EntityType.OBSTACLE_POT || entity.type === EntityType.OBSTACLE_BURNER;
             const isHighEnough = s.playerY > 1.2;
 
-            // Special case: Flashing Burner is safe when OFF (state 0)
             if (entity.type === EntityType.OBSTACLE_BURNER && entity.variant === 1 && entity.state === 0) {
                 // Safe
             } else if (isJumpable && isHighEnough) {
@@ -662,8 +629,11 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
     <>
       <PerspectiveCamera ref={cameraRef} makeDefault position={[0, 4, 8]} fov={60} />
       
+      {/* Explicit background color to prevent black void artifacts */}
       <color attach="background" args={['#fff7ed']} />
-      <fog attach="fog" args={['#fff7ed', 20, 80]} />
+      
+      {/* Increased fog distance to hide end of map smoothly */}
+      <fog attach="fog" args={['#fff7ed', 20, 120]} />
 
       <ambientLight intensity={0.8} color="#fff7ed" />
       <directionalLight 
