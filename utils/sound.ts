@@ -1,6 +1,8 @@
 class SoundManager {
   private ctx: AudioContext | null = null;
   public muted: boolean = false;
+  private ambientOsc: OscillatorNode | null = null;
+  private ambientGain: GainNode | null = null;
 
   constructor() {
     // Initialize on first user interaction usually
@@ -27,6 +29,35 @@ class SoundManager {
     return this.muted;
   }
 
+  playAmbient() {
+      if (this.muted || this.ambientOsc) return;
+      this.init();
+      if (!this.ctx) return;
+
+      // Create a low rumble/hum for kitchen ambience
+      this.ambientOsc = this.ctx.createOscillator();
+      this.ambientGain = this.ctx.createGain();
+      
+      this.ambientOsc.type = 'triangle';
+      this.ambientOsc.frequency.setValueAtTime(60, this.ctx.currentTime); // Low hum
+      
+      // LFO for variation
+      const lfo = this.ctx.createOscillator();
+      lfo.type = 'sine';
+      lfo.frequency.setValueAtTime(0.5, this.ctx.currentTime);
+      const lfoGain = this.ctx.createGain();
+      lfoGain.gain.setValueAtTime(10, this.ctx.currentTime);
+      lfo.connect(lfoGain);
+      lfoGain.connect(this.ambientOsc.frequency);
+      lfo.start();
+
+      this.ambientGain.gain.setValueAtTime(0.03, this.ctx.currentTime);
+      
+      this.ambientOsc.connect(this.ambientGain);
+      this.ambientGain.connect(this.ctx.destination);
+      this.ambientOsc.start();
+  }
+
   private playTone(freq: number, type: OscillatorType, duration: number, vol: number = 0.1) {
       if (this.muted) return;
       this.init();
@@ -48,7 +79,6 @@ class SoundManager {
   }
 
   playCollect() {
-    // High pitched ping
     if (this.muted) return;
     this.init();
     if (!this.ctx) return;
@@ -107,7 +137,7 @@ class SoundManager {
       } else if (type === 'magnet') {
           osc.type = 'triangle';
           osc.frequency.setValueAtTime(300, t);
-          osc.frequency.linearRampToValueAtTime(300, t + 0.1); // Wah-wah effect
+          osc.frequency.linearRampToValueAtTime(300, t + 0.1);
           osc.frequency.linearRampToValueAtTime(600, t + 0.5);
       } else {
           osc.type = 'sawtooth';

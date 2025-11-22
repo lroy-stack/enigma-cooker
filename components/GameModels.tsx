@@ -1,19 +1,65 @@
-import React, { useRef, useLayoutEffect } from 'react';
+import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { EntityType, Particle } from '../types';
 
-// --- Materials (Reuse ensures low draw calls) ---
+// --- Procedural Texture Generation (Realistic Floor) ---
+const useProceduralTextures = () => {
+    return useMemo(() => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1024;
+        canvas.height = 1024;
+        const ctx = canvas.getContext('2d');
+        
+        if (ctx) {
+            // Marble/Tile base
+            ctx.fillStyle = '#eef2ff'; 
+            ctx.fillRect(0, 0, 1024, 1024);
+            
+            // Checker pattern
+            ctx.fillStyle = '#cbd5e1'; // Slate-200
+            const tileSize = 256;
+            for(let y=0; y<4; y++) {
+                for(let x=0; x<4; x++) {
+                    if ((x+y)%2 === 1) {
+                        ctx.fillRect(x*tileSize, y*tileSize, tileSize, tileSize);
+                    }
+                }
+            }
+            
+            // Grout lines
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            for(let i=0; i<=4; i++) {
+                ctx.moveTo(i*tileSize, 0);
+                ctx.lineTo(i*tileSize, 1024);
+                ctx.moveTo(0, i*tileSize);
+                ctx.lineTo(1024, i*tileSize);
+            }
+            ctx.stroke();
+        }
+        
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(5, 10); // Repeat across the countertop strip
+        tex.anisotropy = 16;
+        return { floor: tex };
+    }, []);
+};
+
+// --- Materials (PBR for realism) ---
 const materials = {
-    metal: new THREE.MeshStandardMaterial({ color: "#9ca3af", metalness: 0.9, roughness: 0.2 }),
-    wood: new THREE.MeshStandardMaterial({ color: "#78350f", roughness: 0.8 }),
-    tomato: new THREE.MeshStandardMaterial({ color: "#ef4444", roughness: 0.2, emissive: "#7f1d1d", emissiveIntensity: 0.2 }),
-    cheese: new THREE.MeshStandardMaterial({ color: "#fbbf24", roughness: 0.5 }),
+    metal: new THREE.MeshStandardMaterial({ color: "#94a3b8", metalness: 0.9, roughness: 0.1 }),
+    metalDark: new THREE.MeshStandardMaterial({ color: "#475569", metalness: 0.8, roughness: 0.4 }),
+    tomato: new THREE.MeshStandardMaterial({ color: "#ef4444", roughness: 0.1, metalness: 0.1, emissive: "#7f1d1d", emissiveIntensity: 0.1 }),
+    cheese: new THREE.MeshStandardMaterial({ color: "#fbbf24", roughness: 0.4 }),
     steak: new THREE.MeshStandardMaterial({ color: "#7f1d1d", roughness: 0.6 }),
     glowBlue: new THREE.MeshStandardMaterial({ color: "#3b82f6", emissive: "#3b82f6", emissiveIntensity: 2, toneMapped: false }),
     glowOrange: new THREE.MeshStandardMaterial({ color: "#f97316", emissive: "#f97316", emissiveIntensity: 2, toneMapped: false }),
-    fridge: new THREE.MeshStandardMaterial({ color: "#e5e7eb", metalness: 0.5, roughness: 0.2 }),
-    cabinet: new THREE.MeshStandardMaterial({ color: "#fef3c7", roughness: 0.9 }),
+    fridge: new THREE.MeshStandardMaterial({ color: "#f1f5f9", metalness: 0.3, roughness: 0.1 }),
+    cabinet: new THREE.MeshStandardMaterial({ color: "#fef3c7", roughness: 0.8 }),
 };
 
 // --- The Chef Character ---
@@ -148,7 +194,12 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
         </mesh>
         <mesh position={[0, 1.8, 0]}>
             <cylinderGeometry args={[0.15, 0.15, 0.8]} rotation={[Math.PI/2,0,0]} />
-            <meshStandardMaterial color="#1f2937" />
+            <meshStandardMaterial color="#0f172a" />
+        </mesh>
+        {/* Reflection Glint hint */}
+        <mesh position={[0.06, 1, 0]}>
+            <planeGeometry args={[0.01, 2]} />
+            <meshBasicMaterial color="white" transparent opacity={0.4} />
         </mesh>
       </group>
     );
@@ -158,13 +209,19 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
        <group ref={meshRef} position={[0, 0.6, 0]}>
         <mesh castShadow>
            <cylinderGeometry args={[0.7, 0.6, 1.2, 16]} />
-           <meshStandardMaterial color="#374151" metalness={0.6} roughness={0.4} />
+           <primitive object={materials.metalDark} />
         </mesh>
+        {/* Liquid */}
          <mesh position={[0, 0.5, 0]}>
            <cylinderGeometry args={[0.6, 0, 0.1, 16]} />
-           <meshStandardMaterial color="#16a34a" />
+           <meshStandardMaterial color="#22c55e" />
         </mesh>
+        {/* Handles */}
         <mesh position={[0.7, 0.3, 0]} rotation={[0,0,Math.PI/2]}>
+            <cylinderGeometry args={[0.1, 0.1, 0.4]} />
+            <primitive object={materials.metal} />
+        </mesh>
+        <mesh position={[-0.7, 0.3, 0]} rotation={[0,0,Math.PI/2]}>
             <cylinderGeometry args={[0.1, 0.1, 0.4]} />
             <primitive object={materials.metal} />
         </mesh>
@@ -176,13 +233,13 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
           <group ref={meshRef} position={[0, 0.1, 0]}>
               <mesh receiveShadow>
                   <cylinderGeometry args={[1, 1.1, 0.2, 16]} />
-                  <meshStandardMaterial color="#111" />
+                  <meshStandardMaterial color="#0f172a" />
               </mesh>
               <mesh position={[0, 0.3, 0]}>
                    <coneGeometry args={[0.8, 1, 8]} />
-                   <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={2} transparent opacity={0.7} />
+                   <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={2} transparent opacity={0.8} />
               </mesh>
-              <pointLight color="#ef4444" intensity={2} distance={3} position={[0, 1, 0]} />
+              <pointLight color="#ef4444" intensity={3} distance={4} position={[0, 1, 0]} />
           </group>
       )
   }
@@ -195,14 +252,15 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
             <sphereGeometry args={[0.35, 16, 16]} />
             <primitive object={materials.tomato} />
         </mesh>
+        {/* Leaves (Standard Geometry) */}
         <group position={[0, 0.32, 0]}>
              <mesh>
-                 <cylinderGeometry args={[0.01, 0.25, 0.05, 5]} />
-                 <meshStandardMaterial color="#166534" />
+                 <cylinderGeometry args={[0.01, 0.05, 0.1, 5]} />
+                 <meshStandardMaterial color="#15803d" />
              </mesh>
-             <mesh position={[0, 0.1, 0]}>
-                 <cylinderGeometry args={[0.03, 0.03, 0.2, 6]} />
-                 <meshStandardMaterial color="#166534" />
+             <mesh position={[0, 0, 0]}>
+                 <cylinderGeometry args={[0.15, 0.01, 0.02, 5]} />
+                 <meshStandardMaterial color="#15803d" />
              </mesh>
         </group>
       </group>
@@ -243,11 +301,11 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
             </mesh>
             <mesh position={[-0.4, -0.2, 0]}>
                 <boxGeometry args={[0.2, 0.4, 0.2]} />
-                <meshStandardMaterial color="red" />
+                <meshStandardMaterial color="#ef4444" />
             </mesh>
             <mesh position={[0.4, -0.2, 0]}>
                 <boxGeometry args={[0.2, 0.4, 0.2]} />
-                <meshStandardMaterial color="red" />
+                <meshStandardMaterial color="#ef4444" />
             </mesh>
             <pointLight color="white" intensity={1} distance={3} />
         </group>
@@ -299,6 +357,8 @@ export const GiantProp = React.memo(({ type, x, z, rotation }: { type: string, x
                     <boxGeometry args={[1.5, 0.1, 0.2]} />
                     <meshStandardMaterial color="#111" />
                 </mesh>
+                {/* Glow */}
+                <pointLight position={[0, 1.5, 0.6]} color="orange" intensity={0.5} distance={5} />
             </group>
         );
     }
@@ -343,7 +403,7 @@ export const GiantBackgroundProp = React.memo(({ type, x, z, rotation }: { type:
           </mesh>
           <mesh position={[0.1, 3, 1.01]}>
              <boxGeometry args={[0.1, 1, 0.05]} />
-             <meshStandardMaterial color="#999" />
+             <meshStandardMaterial color="#94a3b8" />
           </mesh>
        </group>
      )
@@ -375,10 +435,16 @@ export const GiantBackgroundProp = React.memo(({ type, x, z, rotation }: { type:
 
 // Fixed size to prevent Z-fighting when tiling
 export const KitchenCountertop = React.memo(({ position }: { position: [number, number, number] }) => {
+    const textures = useProceduralTextures();
+    
     return (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={position} receiveShadow>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={position} receiveShadow frustumCulled={false}>
             <planeGeometry args={[50, 100]} />
-            <primitive object={materials.wood} />
+            <meshStandardMaterial 
+                map={textures.floor}
+                roughness={0.1}
+                metalness={0.1}
+            />
         </mesh>
     );
 });
@@ -402,15 +468,14 @@ export const InstancedParticles = ({ particlesRef }: { particlesRef: React.Mutab
             dummy.current.scale.setScalar(Math.max(0, p.life));
             dummy.current.updateMatrix();
             meshRef.current.setMatrixAt(i, dummy.current.matrix);
-            // Color could be handled by InstanceColor, but for simplicity uniform color or varied by scale is used here
         }
         meshRef.current.instanceMatrix.needsUpdate = true;
     });
 
     return (
-        <instancedMesh ref={meshRef} args={[undefined, undefined, 200]}>
+        <instancedMesh ref={meshRef} args={[undefined, undefined, 300]}>
             <boxGeometry args={[0.15, 0.15, 0.15]} />
-            <meshBasicMaterial color="white" transparent opacity={0.8} />
+            <meshBasicMaterial color="white" transparent opacity={0.6} />
         </instancedMesh>
     );
 };

@@ -99,7 +99,7 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
   const [renderEntities, setRenderEntities] = useState<GameEntity[]>([]);
   const [currentTileIndex, setCurrentTileIndex] = useState(0);
   
-  // Static props for environment (Mid-range)
+  // Static props for environment
   const sideProps = useMemo(() => {
       const props = [];
       for(let i=0; i<20; i++) {
@@ -160,6 +160,7 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
       if (playerRef.current) playerRef.current.position.set(0,0,0);
       setRenderEntities([]);
       setCurrentTileIndex(0);
+      soundManager.playAmbient(); // Start ambient noise
     } else if (gameState.status === GameStatus.PLAYING) {
       stateRef.current.status = GameStatus.PLAYING;
     }
@@ -217,21 +218,21 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
     };
   }, []);
 
-  const spawnParticles = (x: number, y: number, z: number, color: string, count: number) => {
+  const spawnParticles = (x: number, y: number, z: number, color: string, count: number, isSteam = false) => {
       for(let i=0; i<count; i++) {
           particlesRef.current.push({
               id: Math.random(),
               x, y, z,
-              vx: (Math.random() - 0.5) * 4,
-              vy: (Math.random() * 4) + 2,
-              vz: (Math.random() - 0.5) * 4,
-              life: 1.0,
+              vx: (Math.random() - 0.5) * (isSteam ? 1 : 4),
+              vy: (Math.random() * (isSteam ? 2 : 4)) + 2,
+              vz: (Math.random() - 0.5) * (isSteam ? 1 : 4),
+              life: isSteam ? 2.0 : 1.0,
               color
           });
       }
-      // Cap particles to prevent memory leak
-      if (particlesRef.current.length > 200) {
-          particlesRef.current = particlesRef.current.slice(particlesRef.current.length - 200);
+      // Cap particles
+      if (particlesRef.current.length > 300) {
+          particlesRef.current = particlesRef.current.slice(particlesRef.current.length - 300);
       }
   };
 
@@ -240,9 +241,10 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
 
     const dt = Math.min(delta, 0.1);
     const s = stateRef.current;
+    const time = state.clock.getElapsedTime();
 
     // Speed & Score
-    let targetSpeed = BASE_SPEED + (Math.abs(s.playerZ) * 0.01);
+    let targetSpeed = BASE_SPEED + (Math.abs(s.playerZ) * 0.005);
     if (s.furyTimer > 0) targetSpeed *= FURY_SPEED_MULTIPLIER;
     if (s.activePowerup === EntityType.POWERUP_TURBO) targetSpeed *= 1.8;
     targetSpeed = Math.min(targetSpeed, MAX_SPEED);
@@ -290,14 +292,23 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
       if (playerRef.current) playerRef.current.position.y = s.playerY;
     }
 
-    // Particles
+    // Particles & Environment Effects
+    // Chance to spawn steam from active pots/burners
+    s.entities.forEach(e => {
+        if (e.active && e.z > s.playerZ - 30 && e.z < s.playerZ + 10) {
+             if ((e.type === EntityType.OBSTACLE_POT || e.type === EntityType.OBSTACLE_BURNER) && Math.random() < 0.1) {
+                 spawnParticles(e.x, 1, e.z, "white", 1, true);
+             }
+        }
+    });
+
     for (let i = particlesRef.current.length - 1; i >= 0; i--) {
         const p = particlesRef.current[i];
         p.x += p.vx * dt;
         p.y += p.vy * dt;
-        p.z += p.vz * dt + (s.speed * dt * 0.5);
-        p.vy -= 15 * dt;
-        p.life -= dt * 1.5;
+        p.z += p.vz * dt + (s.speed * dt * 0.1); // Drag
+        p.vy -= (p.life > 1.5 ? -2 : 5) * dt; // Steam rises then falls
+        p.life -= dt * 1.0;
         if (p.life <= 0 || p.y < 0) {
             particlesRef.current.splice(i, 1);
         }
@@ -445,11 +456,10 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
     <>
       <PerspectiveCamera ref={cameraRef} makeDefault position={[0, 4, 8]} fov={60} />
       
-      {/* Optimized Lights - Bias adjusted for flickering floor */}
-      <ambientLight intensity={0.7} color="#fff7ed" />
+      <ambientLight intensity={0.6} color="#fff7ed" />
       <directionalLight 
         position={[20, 50, 10]} 
-        intensity={1.2} 
+        intensity={1.5} 
         castShadow 
         shadow-mapSize={[512, 512]} 
         shadow-bias={-0.001}
@@ -457,22 +467,23 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
       />
       <SpotLight 
          position={[0, 10, stateRef.current.playerZ - 10]}
-         angle={0.5}
-         penumbra={1}
-         intensity={1.5}
+         angle={0.6}
+         penumbra={0.5}
+         intensity={1.2}
          color="#fbbf24"
-         distance={40}
+         distance={50}
          target={playerRef.current || undefined}
       />
 
-      {/* Reduced Star Count for Perf */}
-      <Stars radius={200} depth={50} count={500} factor={4} saturation={0} fade speed={1} />
+      {/* Optimized Stars */}
+      <Stars radius={200} depth={50} count={300} factor={4} saturation={0} fade speed={0.5} />
 
-      {/* Stable Floor Loop - Renders 3 tiles around player */}
+      {/* Continuous Floor - Render Behind (-1), Center (0), and Ahead (+1) based on direction */}
+      {/* Since Z is negative, index -1 is ahead of index 0. We need current +1 (behind), current, current -1 (ahead) */}
       <group>
+           <KitchenCountertop position={[0, -0.05, (currentTileIndex + 1) * TILE_LENGTH]} />
            <KitchenCountertop position={[0, -0.05, currentTileIndex * TILE_LENGTH]} />
            <KitchenCountertop position={[0, -0.05, (currentTileIndex - 1) * TILE_LENGTH]} />
-           <KitchenCountertop position={[0, -0.05, (currentTileIndex - 2) * TILE_LENGTH]} />
       </group>
 
       {/* Mid-Range Background Props */}
@@ -497,12 +508,8 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
       {/* Distant Background Props (Parallax Layer) */}
       {distantProps.map(prop => {
           const loopLength = 1500;
-          // Move them slightly with player to create parallax illusion? 
-          // Actually, fixed in world space far away works best for true 3D parallax.
-          // We just loop them so they are infinite.
           const relativeZ = (prop.z - stateRef.current.playerZ) % loopLength;
           const visibleZ = stateRef.current.playerZ + relativeZ;
-           // Only render if somewhat close to view frustum to save draw calls, but need large range
            if (visibleZ > stateRef.current.playerZ + 50 || visibleZ < stateRef.current.playerZ - 300) return null;
 
           return (
@@ -537,7 +544,7 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
           )
       ))}
 
-      {/* Instanced Particles */}
+      {/* Instanced Particles (Shared for effects) */}
       <InstancedParticles particlesRef={particlesRef} />
     </>
   );
@@ -547,7 +554,7 @@ export default function GameScene(props: GameSceneProps) {
   return (
     <Canvas shadows dpr={[1, 1.5]} gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, powerPreference: "high-performance" }}>
       <GameLogic {...props} />
-      <Environment preset="sunset" blur={0.6} />
+      <Environment preset="city" blur={0.8} />
     </Canvas>
   );
 }

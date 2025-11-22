@@ -55,7 +55,7 @@ export interface Particle {
   vy: number;
   vz: number;
   life: number;
-  color: string; // Keep for reference, but InstancedMesh might use a single color or attribute
+  color: string;
 }
 
 export interface ScoreRecord {
@@ -65,6 +65,7 @@ export interface ScoreRecord {
 
 export interface UserSession {
   username: string;
+  email?: string;
   highScore: number;
   history: ScoreRecord[];
 }

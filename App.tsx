@@ -65,6 +65,18 @@ const Panel = ({ children, className = "" }: any) => (
   </div>
 );
 
+const LeaderboardItem = ({ rank, name, score, isSelf }: any) => (
+    <div className={`flex justify-between items-center p-2 rounded-lg ${isSelf ? 'bg-orange-100 border border-orange-300' : 'bg-white border border-gray-100'}`}>
+        <div className="flex items-center gap-3">
+            <span className={`font-black text-lg w-6 text-center ${rank === 1 ? 'text-yellow-500' : 'text-gray-400'}`}>
+                {rank}
+            </span>
+            <span className="font-bold text-gray-700 truncate max-w-[120px]">{name}</span>
+        </div>
+        <span className="font-black text-orange-600">{score}</span>
+    </div>
+);
+
 export default function App() {
   const [gameState, setGameState] = useState<GameState>({
     status: GameStatus.MENU,
@@ -80,11 +92,17 @@ export default function App() {
   const [session, setSession] = useState<UserSession | null>(null);
   const [muted, setMuted] = useState(false);
   const [displayScore, setDisplayScore] = useState(0);
-  const [isEditingName, setIsEditingName] = useState(false);
+  const [view, setView] = useState<'MENU' | 'PROFILE' | 'LEADERBOARD'>('MENU');
+  
+  // Profile form
   const [tempName, setTempName] = useState("");
+  const [tempEmail, setTempEmail] = useState("");
 
   useEffect(() => {
-    setSession(storage.load());
+    const sess = storage.load();
+    setSession(sess);
+    setTempName(sess.username);
+    setTempEmail(sess.email || "");
   }, []);
 
   const toggleMute = () => {
@@ -112,11 +130,11 @@ export default function App() {
     }
   };
 
-  const saveName = () => {
+  const saveProfile = () => {
     if (session && tempName.trim()) {
-      const updated = storage.updateName(session, tempName);
+      const updated = storage.updateProfile(session, tempName, tempEmail);
       setSession(updated);
-      setIsEditingName(false);
+      setView('MENU');
     }
   };
 
@@ -212,7 +230,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* --- MENU --- */}
+      {/* --- MENU SYSTEM --- */}
       {gameState.status === GameStatus.MENU && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
           <Panel className="w-full max-w-lg mx-4 text-center relative max-h-[90vh] overflow-y-auto">
@@ -232,55 +250,86 @@ export default function App() {
                 </h1>
              </div>
 
-             {/* Player Profile */}
-             {session && (
-               <div className="bg-orange-50 rounded-2xl p-4 mb-6 border-2 border-orange-100">
-                 <div className="flex items-center justify-between mb-2">
-                    {isEditingName ? (
-                      <div className="flex gap-2 w-full">
-                         <input 
-                           autoFocus
-                           className="flex-1 px-3 py-1 rounded-lg border border-orange-300 outline-none text-orange-900 font-bold"
-                           value={tempName}
-                           onChange={(e) => setTempName(e.target.value)}
-                           placeholder="Enter Name"
-                         />
-                         <button onClick={saveName} className="bg-green-500 text-white px-3 rounded-lg font-bold">OK</button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2" onClick={() => { setTempName(session.username); setIsEditingName(true); }}>
-                         <span className="text-gray-500 text-sm font-bold uppercase">Chef:</span>
-                         <span className="text-xl font-black text-orange-800 border-b-2 border-dotted border-orange-300 hover:border-orange-500 cursor-pointer">{session.username}</span>
-                         <span className="text-xs text-orange-400">✏️</span>
-                      </div>
-                    )}
-                    <div className="text-right">
-                        <div className="text-xs text-gray-500 font-bold uppercase">Best</div>
-                        <div className="text-2xl font-black text-orange-600">{session.highScore}</div>
+             {view === 'MENU' && session && (
+               <>
+                {/* Main Menu */}
+                 <div className="bg-orange-50 rounded-2xl p-4 mb-6 border-2 border-orange-100 shadow-sm">
+                     <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setView('PROFILE')}>
+                           <span className="text-gray-500 text-sm font-bold uppercase">Chef:</span>
+                           <span className="text-xl font-black text-orange-800">{session.username}</span>
+                           <span className="text-xs text-orange-400">⚙️</span>
+                        </div>
+                        <div className="text-right">
+                            <div className="text-xs text-gray-500 font-bold uppercase">Best</div>
+                            <div className="text-2xl font-black text-orange-600">{session.highScore}</div>
+                        </div>
+                     </div>
+                 </div>
+
+                 <div className="space-y-3">
+                    <Button onClick={startGame} className="w-full py-4 text-2xl">
+                       <span className="mr-2">▶</span> Play Now
+                    </Button>
+                    <Button onClick={() => setView('LEADERBOARD')} secondary className="w-full">
+                       🏆 Local Legends
+                    </Button>
+                 </div>
+               </>
+             )}
+
+             {view === 'PROFILE' && session && (
+               <div className="space-y-4 animate-fade-in">
+                 <h2 className="text-2xl font-bold text-orange-800">Chef Profile</h2>
+                 <div className="text-left space-y-4">
+                    <div>
+                       <label className="block text-xs font-bold text-orange-600 uppercase mb-1">Chef Name</label>
+                       <input 
+                         className="w-full px-4 py-3 rounded-xl border-2 border-orange-200 outline-none focus:border-orange-400 font-bold text-lg text-orange-900"
+                         value={tempName}
+                         onChange={(e) => setTempName(e.target.value)}
+                         placeholder="Enter Name"
+                       />
+                    </div>
+                    <div>
+                       <label className="block text-xs font-bold text-orange-600 uppercase mb-1">Email (Optional)</label>
+                       <input 
+                         className="w-full px-4 py-3 rounded-xl border-2 border-orange-200 outline-none focus:border-orange-400 font-medium text-orange-900"
+                         value={tempEmail}
+                         onChange={(e) => setTempEmail(e.target.value)}
+                         placeholder="chef@example.com"
+                       />
                     </div>
                  </div>
-                 
-                 {/* Mini History */}
-                 {session.history.length > 0 && (
-                   <div className="mt-4 border-t border-orange-200 pt-2">
-                      <div className="text-xs text-left text-gray-400 font-bold uppercase mb-1">Recent Runs</div>
-                      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                         {session.history.slice(0, 5).map((rec, i) => (
-                           <div key={i} className="flex-shrink-0 bg-white px-3 py-1 rounded-lg border border-orange-100 text-sm font-bold text-gray-600">
-                              {rec.score}
-                           </div>
-                         ))}
-                      </div>
-                   </div>
-                 )}
+                 <div className="flex gap-2 mt-4">
+                    <Button onClick={() => setView('MENU')} secondary className="flex-1">Cancel</Button>
+                    <Button onClick={saveProfile} className="flex-1">Save</Button>
+                 </div>
                </div>
              )}
 
-             <div className="space-y-4">
-                <Button onClick={startGame} className="w-full py-4 text-2xl">
-                   <span className="mr-2">▶</span> Play Now
-                </Button>
-             </div>
+             {view === 'LEADERBOARD' && session && (
+               <div className="animate-fade-in">
+                  <h2 className="text-2xl font-bold text-orange-800 mb-4">🏆 Local Legends</h2>
+                  <div className="bg-gray-50 rounded-xl p-2 max-h-60 overflow-y-auto mb-4 space-y-2">
+                      {session.history.length === 0 ? (
+                        <div className="text-gray-400 py-8">No runs recorded yet!</div>
+                      ) : (
+                        session.history.sort((a,b) => b.score - a.score).map((run, i) => (
+                           <LeaderboardItem 
+                              key={i} 
+                              rank={i+1} 
+                              name={session.username} 
+                              score={run.score} 
+                              isSelf={true} 
+                           />
+                        ))
+                      )}
+                  </div>
+                  <Button onClick={() => setView('MENU')} secondary className="w-full">Back to Menu</Button>
+               </div>
+             )}
+
           </Panel>
         </div>
       )}
