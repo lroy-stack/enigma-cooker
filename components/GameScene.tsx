@@ -3,7 +3,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { PerspectiveCamera, Environment, Stars, SpotLight } from '@react-three/drei';
 import * as THREE from 'three';
 import { GameStatus, Lane, EntityType, GameEntity, GameState, Particle, FURY_DURATION, POWERUP_DURATION, BASE_SPEED, MAX_SPEED, FURY_SPEED_MULTIPLIER, JUMP_FORCE, GRAVITY } from '../types';
-import { ChefModel, EntityModel, KitchenCountertop, GiantProp, InstancedParticles } from './GameModels';
+import { ChefModel, EntityModel, KitchenCountertop, GiantProp, GiantBackgroundProp, InstancedParticles } from './GameModels';
 import { soundManager } from '../utils/sound';
 
 interface GameSceneProps {
@@ -16,6 +16,7 @@ const SPAWN_DISTANCE = 80;
 const DESPAWN_DISTANCE = 10;
 const COLLISION_THRESHOLD = 0.8;
 const LANE_WIDTH = 2.2;
+const TILE_LENGTH = 100;
 
 type Pattern = (z: number) => GameEntity[];
 
@@ -96,8 +97,9 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
   });
 
   const [renderEntities, setRenderEntities] = useState<GameEntity[]>([]);
+  const [currentTileIndex, setCurrentTileIndex] = useState(0);
   
-  // Static props for environment
+  // Static props for environment (Mid-range)
   const sideProps = useMemo(() => {
       const props = [];
       for(let i=0; i<20; i++) {
@@ -111,6 +113,24 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
               z: z,
               rotation: (Math.random() * 0.5) - 0.2
           });
+      }
+      return props;
+  }, []);
+
+  // Distant props for parallax
+  const distantProps = useMemo(() => {
+      const props = [];
+      for(let i=0; i<10; i++) {
+         const z = -i * 150;
+         const isLeft = i % 2 === 0;
+         const type = Math.random() > 0.5 ? 'fridge' : 'cabinet';
+         props.push({
+             id: `bg-${i}`,
+             type,
+             x: isLeft ? -50 : 50,
+             z: z,
+             rotation: isLeft ? 0.5 : -0.5
+         });
       }
       return props;
   }, []);
@@ -139,6 +159,7 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
       particlesRef.current = [];
       if (playerRef.current) playerRef.current.position.set(0,0,0);
       setRenderEntities([]);
+      setCurrentTileIndex(0);
     } else if (gameState.status === GameStatus.PLAYING) {
       stateRef.current.status = GameStatus.PLAYING;
     }
@@ -229,6 +250,12 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
 
     s.playerZ -= s.speed * dt;
     s.score += (s.speed * dt) * 0.5;
+
+    // Update Tile Index for Floor
+    const newTileIndex = Math.floor(s.playerZ / TILE_LENGTH);
+    if (newTileIndex !== currentTileIndex) {
+        setCurrentTileIndex(newTileIndex);
+    }
 
     // Timers
     if (s.furyTimer > 0) {
@@ -418,7 +445,7 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
     <>
       <PerspectiveCamera ref={cameraRef} makeDefault position={[0, 4, 8]} fov={60} />
       
-      {/* Optimized Lights */}
+      {/* Optimized Lights - Bias adjusted for flickering floor */}
       <ambientLight intensity={0.7} color="#fff7ed" />
       <directionalLight 
         position={[20, 50, 10]} 
@@ -441,11 +468,14 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
       {/* Reduced Star Count for Perf */}
       <Stars radius={200} depth={50} count={500} factor={4} saturation={0} fade speed={1} />
 
-      <group position={[0, 0, Math.floor(stateRef.current.playerZ / 100) * 100]}>
-           <KitchenCountertop />
-           <group position={[0, 0, -100]}><KitchenCountertop /></group>
+      {/* Stable Floor Loop - Renders 3 tiles around player */}
+      <group>
+           <KitchenCountertop position={[0, -0.05, currentTileIndex * TILE_LENGTH]} />
+           <KitchenCountertop position={[0, -0.05, (currentTileIndex - 1) * TILE_LENGTH]} />
+           <KitchenCountertop position={[0, -0.05, (currentTileIndex - 2) * TILE_LENGTH]} />
       </group>
 
+      {/* Mid-Range Background Props */}
       {sideProps.map(prop => {
           const loopLength = 600;
           const relativeZ = (prop.z - stateRef.current.playerZ) % loopLength;
@@ -453,8 +483,31 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
           if (Math.abs(visibleZ - stateRef.current.playerZ) > 100) return null;
 
           return (
-              <group key={prop.id}>
+              <group key={`side-${prop.id}`}>
                   <GiantProp 
+                     type={prop.type} 
+                     x={prop.x} 
+                     z={visibleZ} 
+                     rotation={prop.rotation} 
+                  />
+              </group>
+          );
+      })}
+
+      {/* Distant Background Props (Parallax Layer) */}
+      {distantProps.map(prop => {
+          const loopLength = 1500;
+          // Move them slightly with player to create parallax illusion? 
+          // Actually, fixed in world space far away works best for true 3D parallax.
+          // We just loop them so they are infinite.
+          const relativeZ = (prop.z - stateRef.current.playerZ) % loopLength;
+          const visibleZ = stateRef.current.playerZ + relativeZ;
+           // Only render if somewhat close to view frustum to save draw calls, but need large range
+           if (visibleZ > stateRef.current.playerZ + 50 || visibleZ < stateRef.current.playerZ - 300) return null;
+
+          return (
+              <group key={`dist-${prop.id}`}>
+                  <GiantBackgroundProp 
                      type={prop.type} 
                      x={prop.x} 
                      z={visibleZ} 

@@ -11,7 +11,9 @@ const materials = {
     cheese: new THREE.MeshStandardMaterial({ color: "#fbbf24", roughness: 0.5 }),
     steak: new THREE.MeshStandardMaterial({ color: "#7f1d1d", roughness: 0.6 }),
     glowBlue: new THREE.MeshStandardMaterial({ color: "#3b82f6", emissive: "#3b82f6", emissiveIntensity: 2, toneMapped: false }),
-    glowOrange: new THREE.MeshStandardMaterial({ color: "#f97316", emissive: "#f97316", emissiveIntensity: 2, toneMapped: false })
+    glowOrange: new THREE.MeshStandardMaterial({ color: "#f97316", emissive: "#f97316", emissiveIntensity: 2, toneMapped: false }),
+    fridge: new THREE.MeshStandardMaterial({ color: "#e5e7eb", metalness: 0.5, roughness: 0.2 }),
+    cabinet: new THREE.MeshStandardMaterial({ color: "#fef3c7", roughness: 0.9 }),
 };
 
 // --- The Chef Character ---
@@ -331,10 +333,51 @@ export const GiantProp = React.memo(({ type, x, z, rotation }: { type: string, x
     return null;
 });
 
-export const KitchenCountertop = React.memo(() => {
+export const GiantBackgroundProp = React.memo(({ type, x, z, rotation }: { type: string, x: number, z: number, rotation: number }) => {
+  if (type === 'fridge') {
+     return (
+       <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[15, 15, 15]}>
+          <mesh castShadow receiveShadow position={[0, 2.5, 0]}>
+             <boxGeometry args={[2, 5, 2]} />
+             <primitive object={materials.fridge} />
+          </mesh>
+          <mesh position={[0.1, 3, 1.01]}>
+             <boxGeometry args={[0.1, 1, 0.05]} />
+             <meshStandardMaterial color="#999" />
+          </mesh>
+       </group>
+     )
+  }
+  if (type === 'cabinet') {
     return (
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, -100]} receiveShadow>
-            <planeGeometry args={[40, 400]} />
+      <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[15, 15, 15]}>
+         <mesh castShadow receiveShadow position={[0, 2, 0]}>
+            <boxGeometry args={[4, 4, 2]} />
+            <primitive object={materials.cabinet} />
+         </mesh>
+         <mesh position={[0, 2, 1.01]}>
+            <boxGeometry args={[0.1, 4, 0.02]} />
+            <meshStandardMaterial color="#d97706" />
+         </mesh>
+         <mesh position={[-1, 2, 1.02]}>
+            <sphereGeometry args={[0.1]} />
+            <primitive object={materials.metal} />
+         </mesh>
+         <mesh position={[1, 2, 1.02]}>
+            <sphereGeometry args={[0.1]} />
+            <primitive object={materials.metal} />
+         </mesh>
+      </group>
+    )
+  }
+  return null;
+});
+
+// Fixed size to prevent Z-fighting when tiling
+export const KitchenCountertop = React.memo(({ position }: { position: [number, number, number] }) => {
+    return (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={position} receiveShadow>
+            <planeGeometry args={[50, 100]} />
             <primitive object={materials.wood} />
         </mesh>
     );
