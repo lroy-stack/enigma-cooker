@@ -1,5 +1,7 @@
+
 import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { EntityType, Particle } from '../types';
 
@@ -23,32 +25,28 @@ const useProceduralTextures = () => {
              ctx.globalAlpha = 1.0;
         };
         
-        // 1. Wood Texture (Butcher Block Floor) - High Fidelity
+        // 1. Wood Texture (Butcher Block Floor)
         const canvasWood = document.createElement('canvas');
         canvasWood.width = width;
         canvasWood.height = height;
         const ctxWood = canvasWood.getContext('2d');
         if (ctxWood) {
-            // Base dark brown
-            ctxWood.fillStyle = '#78350f'; // Amber-900
+            ctxWood.fillStyle = '#78350f'; 
             ctxWood.fillRect(0, 0, width, height);
             
             const plankWidth = 64;
             for (let i = 0; i < width / plankWidth; i++) {
-                // Plank color variation
                 const hue = 30 + Math.random() * 5;
                 const sat = 70 + Math.random() * 15;
                 const lig = 20 + Math.random() * 10;
                 ctxWood.fillStyle = `hsl(${hue}, ${sat}%, ${lig}%)`;
                 ctxWood.fillRect(i * plankWidth, 0, plankWidth, height);
                 
-                // Wood grain lines
                 ctxWood.strokeStyle = '#451a03';
                 ctxWood.globalAlpha = 0.2;
                 ctxWood.beginPath();
                 for(let j=0; j<30; j++) {
                     const xStart = i * plankWidth + Math.random() * plankWidth;
-                    // Wavy grain
                     ctxWood.moveTo(xStart, 0);
                     ctxWood.bezierCurveTo(
                         xStart + (Math.random()-0.5)*20, height/3,
@@ -69,18 +67,13 @@ const useProceduralTextures = () => {
                     ctxWood.ellipse(kx, ky, kr, kr*2.5, Math.random(), 0, Math.PI*2);
                     ctxWood.fill();
                 }
-
                 ctxWood.globalAlpha = 1.0;
-                
-                // Gap
                 ctxWood.fillStyle = '#1a0f0a';
                 ctxWood.fillRect((i+1)*plankWidth - 2, 0, 2, height);
             }
-
-            // Add General Noise/Dirt
             addNoise(ctxWood, width, height, 1.5);
             
-            // Scratches & Wear
+            // Scratches
             ctxWood.strokeStyle = '#9a6340'; 
             ctxWood.globalAlpha = 0.2;
             ctxWood.beginPath();
@@ -92,7 +85,6 @@ const useProceduralTextures = () => {
             }
             ctxWood.stroke();
             
-            // Dried spills (dark patches)
             ctxWood.globalAlpha = 0.1;
             ctxWood.fillStyle = '#1a0f0a';
             for(let p=0; p<5; p++) {
@@ -110,17 +102,14 @@ const useProceduralTextures = () => {
         texWood.wrapT = THREE.RepeatWrapping;
         texWood.repeat.set(5, 10);
         
-        // 2. Tile Texture (Walls) - Detailed
+        // 2. Tile Texture (Walls)
         const canvasTile = document.createElement('canvas');
         canvasTile.width = width;
         canvasTile.height = height;
         const ctxTile = canvasTile.getContext('2d');
         if (ctxTile) {
-            // Base Grout
-            ctxTile.fillStyle = '#cbd5e1'; // Base grout color
+            ctxTile.fillStyle = '#cbd5e1'; 
             ctxTile.fillRect(0, 0, width, height);
-            
-            // Grout Detail: Noise and darkening
             addNoise(ctxTile, width, height, 1.0);
             ctxTile.fillStyle = 'rgba(0,0,0,0.1)';
             for(let g=0; g<50; g++) {
@@ -131,11 +120,9 @@ const useProceduralTextures = () => {
             const tileSizeH = 64;
             const gap = 4;
 
-            // Subway tile pattern
             for(let y=0; y<height/tileSizeH; y++) {
                 const offset = y % 2 === 0 ? 0 : -tileSizeW/2;
                 for(let x=0; x<(width/tileSizeW)+1; x++) {
-                    // Variation in tile white/off-white
                     const val = 230 + Math.random() * 25;
                     ctxTile.fillStyle = `rgb(${val}, ${val}, ${val})`;
                     
@@ -146,29 +133,23 @@ const useProceduralTextures = () => {
                     
                     ctxTile.fillRect(drawX, drawY, drawW, drawH);
 
-                    // Subtle bevel/highlight top-left
                     ctxTile.fillStyle = 'rgba(255,255,255,0.6)';
                     ctxTile.fillRect(drawX, drawY, drawW, 3);
                     ctxTile.fillRect(drawX, drawY, 3, drawH);
                     
-                    // Subtle shadow bottom-right
                     ctxTile.fillStyle = 'rgba(0,0,0,0.1)';
                     ctxTile.fillRect(drawX, drawY + drawH - 3, drawW, 3);
                     ctxTile.fillRect(drawX + drawW - 3, drawY, 3, drawH);
 
-                    // Chipped Corners (Wear & Tear)
                     if (Math.random() < 0.08) {
                          const chipSize = 4 + Math.random() * 8;
-                         ctxTile.fillStyle = '#94a3b8'; // Reveal cement underneath
+                         ctxTile.fillStyle = '#94a3b8'; 
                          ctxTile.beginPath();
-                         // Randomly pick a corner
                          if (Math.random() > 0.5) {
-                             // Bottom right chip
                              ctxTile.moveTo(drawX + drawW, drawY + drawH - chipSize);
                              ctxTile.lineTo(drawX + drawW, drawY + drawH);
                              ctxTile.lineTo(drawX + drawW - chipSize, drawY + drawH);
                          } else {
-                             // Top left chip
                              ctxTile.moveTo(drawX, drawY + chipSize);
                              ctxTile.lineTo(drawX, drawY);
                              ctxTile.lineTo(drawX + chipSize, drawY);
@@ -176,7 +157,6 @@ const useProceduralTextures = () => {
                          ctxTile.fill();
                     }
 
-                    // Hairline Cracks
                     if (Math.random() < 0.04) {
                         ctxTile.strokeStyle = 'rgba(0,0,0,0.2)';
                         ctxTile.lineWidth = 1;
@@ -189,13 +169,10 @@ const useProceduralTextures = () => {
                     }
                 }
             }
-
-            // Add general grime/noise on top of tiles
             addNoise(ctxTile, width, height, 0.6);
             
-            // Grease streaks (vertical drips)
             ctxTile.globalAlpha = 0.05;
-            ctxTile.fillStyle = '#d97706'; // Yellowish grease
+            ctxTile.fillStyle = '#d97706'; 
             for(let i=0; i<15; i++) {
                  const dx = Math.random() * width;
                  const dy = Math.random() * height;
@@ -205,7 +182,6 @@ const useProceduralTextures = () => {
             }
             ctxTile.globalAlpha = 1.0;
 
-            // Kitchen Grime splatters (grease spots)
             ctxTile.globalAlpha = 0.1;
             for(let i=0; i<30; i++) {
                 ctxTile.fillStyle = Math.random() > 0.5 ? '#78350f' : '#334155';
@@ -227,27 +203,22 @@ const useProceduralTextures = () => {
     }, []);
 };
 
-// --- Materials ---
 const materials = {
     metal: new THREE.MeshStandardMaterial({ color: "#94a3b8", metalness: 0.6, roughness: 0.2 }),
     metalDark: new THREE.MeshStandardMaterial({ color: "#334155", metalness: 0.5, roughness: 0.5 }),
-    // Red Enamel Pot - Very distinct
     potBody: new THREE.MeshStandardMaterial({ color: "#dc2626", metalness: 0.2, roughness: 0.3 }), 
     potInside: new THREE.MeshStandardMaterial({ color: "#1e293b" }),
-    // Handle for knife
     woodHandle: new THREE.MeshStandardMaterial({ color: "#451a03", roughness: 0.9 }),
-    
     tomato: new THREE.MeshStandardMaterial({ color: "#ef4444", roughness: 0.2, emissive: "#991b1b", emissiveIntensity: 0.2 }),
     cheese: new THREE.MeshStandardMaterial({ color: "#fbbf24", roughness: 0.5 }),
     steak: new THREE.MeshStandardMaterial({ color: "#9f1239", roughness: 0.6 }),
-    
     glowBlue: new THREE.MeshStandardMaterial({ color: "#3b82f6", emissive: "#3b82f6", emissiveIntensity: 2, toneMapped: false }),
     glowOrange: new THREE.MeshStandardMaterial({ color: "#f97316", emissive: "#f97316", emissiveIntensity: 2, toneMapped: false }),
-    
+    glowPurple: new THREE.MeshStandardMaterial({ color: "#a855f7", emissive: "#a855f7", emissiveIntensity: 2, toneMapped: false }),
+    oil: new THREE.MeshStandardMaterial({ color: "#1c1917", roughness: 0, metalness: 0.2, transparent: true, opacity: 0.9 }),
     ceiling: new THREE.MeshStandardMaterial({ color: "#f1f5f9", roughness: 0.9 }),
 };
 
-// --- The Chef Character ---
 export const ChefModel = ({ isFury, isJumping, shieldActive }: { isFury: boolean; isJumping: boolean, shieldActive: boolean }) => {
   const groupRef = useRef<THREE.Group>(null);
   const leftLegRef = useRef<THREE.Mesh>(null);
@@ -260,7 +231,6 @@ export const ChefModel = ({ isFury, isJumping, shieldActive }: { isFury: boolean
     const time = state.clock.getElapsedTime();
     const speed = isFury ? 25 : 18;
     
-    // Running Animation
     if (leftLegRef.current && rightLegRef.current) {
       if (isJumping) {
          leftLegRef.current.rotation.x = -0.8;
@@ -271,13 +241,11 @@ export const ChefModel = ({ isFury, isJumping, shieldActive }: { isFury: boolean
       }
     }
 
-    // Hat wobble
     if (hatRef.current) {
         hatRef.current.rotation.z = Math.sin(time * 10) * 0.05;
         hatRef.current.position.y = 1.6 + Math.abs(Math.sin(time * speed * 2)) * 0.05;
     }
 
-    // Shield Animation
     if (shieldRef.current) {
         shieldRef.current.rotation.y += 0.05;
         shieldRef.current.rotation.z = Math.sin(time * 2) * 0.2;
@@ -288,37 +256,28 @@ export const ChefModel = ({ isFury, isJumping, shieldActive }: { isFury: boolean
 
   return (
     <group ref={groupRef}>
-      {/* Shield Visual */}
       {shieldActive && (
         <mesh ref={shieldRef} position={[0, 1, 0]}>
             <sphereGeometry args={[1.2, 32, 32]} />
             <meshBasicMaterial color="#60a5fa" transparent opacity={0.3} wireframe />
         </mesh>
       )}
-
-      {/* Body */}
       <mesh position={[0, 0.75, 0]} castShadow receiveShadow>
         <cylinderGeometry args={[0.35, 0.4, 0.8, 16]} />
         <meshStandardMaterial color="white" />
       </mesh>
-      {/* Apron */}
       <mesh position={[0, 0.6, 0.25]}>
          <boxGeometry args={[0.5, 0.6, 0.1]} />
          <meshStandardMaterial color={isFury ? "#ef4444" : "#f97316"} emissive={isFury ? "#ef4444" : "black"} emissiveIntensity={isFury ? 0.5 : 0} />
       </mesh>
-
-      {/* Head */}
       <mesh position={[0, 1.3, 0]} castShadow>
         <sphereGeometry args={[0.25, 16, 16]} />
         <meshStandardMaterial color="#fca5a5" />
       </mesh>
-      {/* Mustache */}
       <mesh position={[0, 1.25, 0.22]} rotation={[0,0,Math.PI/2]}>
         <cylinderGeometry args={[0.02, 0.02, 0.2, 8]} />
         <meshStandardMaterial color="#4b5563" /> 
       </mesh>
-
-      {/* Hat */}
       <group ref={hatRef}>
         <mesh position={[0, 0, 0]}>
            <cylinderGeometry args={[0.25, 0.2, 0.5, 16]} />
@@ -329,8 +288,6 @@ export const ChefModel = ({ isFury, isJumping, shieldActive }: { isFury: boolean
            <meshStandardMaterial color="white" />
         </mesh>
       </group>
-
-      {/* Legs */}
       <mesh ref={leftLegRef} position={[-0.2, 0.4, 0]}>
         <cylinderGeometry args={[0.1, 0.1, 0.5, 8]} />
         <meshStandardMaterial color="#1f2937" />
@@ -351,39 +308,65 @@ export const ChefModel = ({ isFury, isJumping, shieldActive }: { isFury: boolean
   );
 };
 
-// --- Props & Obstacles ---
-
-export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
+export const EntityModel = React.memo(({ type, letter, variant, customState }: { type: EntityType, letter?: string, variant?: number, customState?: number }) => {
   const meshRef = useRef<THREE.Group>(null);
   
   useFrame((state) => {
     if (!meshRef.current) return;
     
-    if (type === EntityType.OBSTACLE_KNIFE) {
+    if (type === EntityType.ITEM_LETTER) {
+        meshRef.current.rotation.y = Math.sin(state.clock.getElapsedTime() * 2) * 0.5;
+        meshRef.current.position.y = 1 + Math.sin(state.clock.getElapsedTime() * 3) * 0.2;
+    } else if (type === EntityType.OBSTACLE_KNIFE) {
        meshRef.current.rotation.z = Math.sin(state.clock.getElapsedTime() * 5) * 0.1;
     } else if (type === EntityType.OBSTACLE_BURNER) {
-       // Static
+       // Static or flashing managed below
+    } else if (type === EntityType.OBSTACLE_OIL) {
+        // Flat
     } else {
        meshRef.current.rotation.y += 0.03;
        meshRef.current.position.y = Math.sin(state.clock.getElapsedTime() * 3) * 0.1;
     }
   });
 
-  // --- OBSTACLES ---
+  if (type === EntityType.OBSTACLE_OIL) {
+      return (
+          <group ref={meshRef} position={[0, 0.02, 0]}>
+              <mesh rotation={[-Math.PI/2, 0, 0]}>
+                  <circleGeometry args={[1.2, 32]} />
+                  <primitive object={materials.oil} />
+              </mesh>
+          </group>
+      )
+  }
+  
+  if (type === EntityType.DECOR_SPOON) {
+      return (
+          <group ref={meshRef} position={[0, 0.5, 0]} rotation={[0,0,Math.PI/4]}>
+              <mesh castShadow>
+                  <cylinderGeometry args={[0.05, 0.05, 1.5]} />
+                  <primitive object={materials.metal} />
+              </mesh>
+              <mesh position={[0, 0.8, 0]}>
+                  <sphereGeometry args={[0.3, 16, 16, 0, Math.PI*2, 0, Math.PI/2]} />
+                  <primitive object={materials.metal} />
+              </mesh>
+          </group>
+      )
+  }
+
   if (type === EntityType.OBSTACLE_KNIFE) {
+    const isFalling = customState === 1; // 1 = Falling state logic
     return (
-      <group ref={meshRef} position={[0, 1.5, 0]}>
-        {/* Blade */}
+      <group ref={meshRef} position={[0, isFalling ? 0 : 1.5, 0]}>
         <mesh castShadow position={[0, 0.5, 0]}>
            <boxGeometry args={[0.1, 2.5, 0.8]} />
            <primitive object={materials.metal} />
         </mesh>
-        {/* Handle - Dark Wood for Contrast */}
         <mesh position={[0, 1.8, 0]}>
             <cylinderGeometry args={[0.15, 0.15, 0.8]} rotation={[Math.PI/2,0,0]} />
             <primitive object={materials.woodHandle} />
         </mesh>
-        {/* Rivets */}
         <mesh position={[0.1, 1.8, 0.2]}>
             <sphereGeometry args={[0.05]} />
             <meshStandardMaterial color="#94a3b8" />
@@ -392,28 +375,30 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
             <sphereGeometry args={[0.05]} />
             <meshStandardMaterial color="#94a3b8" />
         </mesh>
+        {isFalling && (
+             <mesh position={[0, -2, 0]} rotation={[-Math.PI/2,0,0]}>
+                 <circleGeometry args={[0.5, 16]} />
+                 <meshBasicMaterial color="black" opacity={0.4} transparent />
+             </mesh>
+        )}
       </group>
     );
   }
   if (type === EntityType.OBSTACLE_POT) {
     return (
        <group ref={meshRef} position={[0, 0.6, 0]}>
-        {/* Main Pot - Red Enamel to stand out against wood floor */}
         <mesh castShadow>
            <cylinderGeometry args={[0.7, 0.6, 1.2, 16]} />
            <primitive object={materials.potBody} />
         </mesh>
-        {/* Inner */}
         <mesh position={[0, 0.6, 0]}>
             <cylinderGeometry args={[0.6, 0.5, 0.1, 16]} />
             <primitive object={materials.potInside} />
         </mesh>
-        {/* Liquid */}
          <mesh position={[0, 0.5, 0]}>
            <cylinderGeometry args={[0.55, 0, 0.1, 16]} />
            <meshStandardMaterial color="#16a34a" opacity={0.9} transparent />
         </mesh>
-        {/* Handles */}
         <mesh position={[0.7, 0.3, 0]} rotation={[0,0,Math.PI/2]}>
             <cylinderGeometry args={[0.1, 0.1, 0.4]} />
             <primitive object={materials.metalDark} />
@@ -426,22 +411,28 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
     );
   }
   if (type === EntityType.OBSTACLE_BURNER) {
+      // Custom state 0 = OFF, 1 = ON (if flashing variant)
+      const isOn = variant === 1 ? (customState === 1) : true;
+      
       return (
           <group ref={meshRef} position={[0, 0.1, 0]}>
               <mesh receiveShadow>
                   <cylinderGeometry args={[1, 1.1, 0.2, 16]} />
                   <meshStandardMaterial color="#1e293b" />
               </mesh>
-              {/* Grate */}
               <mesh position={[0, 0.15, 0]}>
                   <torusGeometry args={[0.8, 0.05, 8, 16]} rotation={[Math.PI/2, 0, 0]} />
                   <meshStandardMaterial color="#0f172a" />
               </mesh>
-              <mesh position={[0, 0.3, 0]}>
-                   <coneGeometry args={[0.6, 1, 8]} />
-                   <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={3} transparent opacity={0.8} />
-              </mesh>
-              <pointLight color="#ef4444" intensity={2} distance={4} position={[0, 0.5, 0]} />
+              {isOn && (
+                <>
+                    <mesh position={[0, 0.3, 0]}>
+                        <coneGeometry args={[0.6, 1, 8]} />
+                        <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={3} transparent opacity={0.8} />
+                    </mesh>
+                    <pointLight color="#ef4444" intensity={2} distance={4} position={[0, 0.5, 0]} />
+                </>
+              )}
           </group>
       )
   }
@@ -454,7 +445,6 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
             <sphereGeometry args={[0.35, 16, 16]} />
             <primitive object={materials.tomato} />
         </mesh>
-        {/* Leaves */}
         <group position={[0, 0.32, 0]}>
              <mesh>
                  <cylinderGeometry args={[0.01, 0.05, 0.1, 5]} />
@@ -491,6 +481,28 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
         </mesh>
       </mesh>
     );
+  }
+
+  if (type === EntityType.ITEM_LETTER && letter) {
+      return (
+          <group ref={meshRef}>
+              <Text
+                font="https://fonts.gstatic.com/s/fredokaone/v8/k3kUo8kEI-tA1RRcTZGmGmHHE795.woff"
+                fontSize={1.5}
+                color="#a855f7"
+                outlineWidth={0.1}
+                outlineColor="#ffffff"
+                characters="ENIGMA"
+              >
+                {letter}
+              </Text>
+               <mesh position={[0,0,-0.2]}>
+                  <sphereGeometry args={[0.8, 16, 16]} />
+                  <primitive object={materials.glowPurple} />
+                  <meshBasicMaterial color="#a855f7" transparent opacity={0.3} />
+              </mesh>
+          </group>
+      );
   }
 
   // --- POWERUPS ---
@@ -547,9 +559,10 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
 // --- Environment ---
 
 export const GiantProp = React.memo(({ type, x, z, rotation }: { type: string, x: number, z: number, rotation: number }) => {
+    // Updated: Much smaller scales to look like realistic kitchen clutter, not giants
     if (type === 'toaster') {
         return (
-            <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[4, 4, 4]}>
+            <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[1.5, 1.5, 1.5]}>
                 <mesh castShadow receiveShadow position={[0, 1, 0]}>
                     <boxGeometry args={[2, 1.5, 1]} />
                     <primitive object={materials.metal} />
@@ -563,7 +576,7 @@ export const GiantProp = React.memo(({ type, x, z, rotation }: { type: string, x
     }
     if (type === 'flour') {
         return (
-             <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[3, 3, 3]}>
+             <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[1.2, 1.2, 1.2]}>
                 <mesh castShadow position={[0, 1.5, 0]}>
                     <boxGeometry args={[1.5, 3, 1]} />
                     <meshStandardMaterial color="#fef3c7" roughness={1} />
@@ -577,7 +590,7 @@ export const GiantProp = React.memo(({ type, x, z, rotation }: { type: string, x
     }
     if (type === 'milk') {
         return (
-            <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[3.5, 3.5, 3.5]}>
+            <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[1.4, 1.4, 1.4]}>
                  <mesh castShadow position={[0, 2, 0]}>
                     <boxGeometry args={[1.5, 4, 1.5]} />
                     <meshStandardMaterial color="#3b82f6" roughness={0.8} />
@@ -593,9 +606,10 @@ export const GiantProp = React.memo(({ type, x, z, rotation }: { type: string, x
 });
 
 export const GiantBackgroundProp = React.memo(({ type, x, z, rotation }: { type: string, x: number, z: number, rotation: number }) => {
+  // Updated: Scaled to fit inside the new narrower walls without clipping heavily
   if (type === 'fridge') {
      return (
-       <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[15, 15, 15]}>
+       <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[5, 5, 5]}>
           <mesh castShadow receiveShadow position={[0, 2.5, 0]}>
              <boxGeometry args={[2, 5, 2]} />
              <meshStandardMaterial color="#f1f5f9" metalness={0.3} roughness={0.2} />
@@ -609,7 +623,7 @@ export const GiantBackgroundProp = React.memo(({ type, x, z, rotation }: { type:
   }
   if (type === 'cabinet') {
     return (
-      <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[15, 15, 15]}>
+      <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[5, 5, 5]}>
          <mesh castShadow receiveShadow position={[0, 2, 0]}>
             <boxGeometry args={[4, 4, 2]} />
             <meshStandardMaterial color="#fcd34d" roughness={0.8} />
@@ -620,11 +634,9 @@ export const GiantBackgroundProp = React.memo(({ type, x, z, rotation }: { type:
   return null;
 });
 
-// Replaces KitchenCountertop with a full room segment
 export const KitchenSegment = React.memo(({ position }: { position: [number, number, number] }) => {
     const textures = useProceduralTextures();
     
-    // Walls at +/- 11 to fit portrait mode nicely (width ~22)
     return (
         <group position={position}>
             {/* Floor - Dark Butcher Block */}
@@ -654,7 +666,7 @@ export const KitchenSegment = React.memo(({ position }: { position: [number, num
                 <primitive object={materials.ceiling} />
             </mesh>
             
-            {/* Lights on Ceiling to mimic kitchen strip lights */}
+            {/* Lights on Ceiling */}
             <mesh position={[0, 49, 0]} rotation={[Math.PI/2, 0, 0]}>
                  <boxGeometry args={[6, 100, 1]} />
                  <meshBasicMaterial color="#fef3c7" />
@@ -680,14 +692,19 @@ export const InstancedParticles = ({ particlesRef }: { particlesRef: React.Mutab
             dummy.current.scale.setScalar(Math.max(0, p.life));
             dummy.current.updateMatrix();
             meshRef.current.setMatrixAt(i, dummy.current.matrix);
+            
+            // Simple color variation based on life/type (hardcoded white for simplicity here, can be expanded)
+            const color = new THREE.Color(p.color);
+            meshRef.current.setColorAt(i, color);
         }
         meshRef.current.instanceMatrix.needsUpdate = true;
+        if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
     });
 
     return (
         <instancedMesh ref={meshRef} args={[undefined, undefined, 300]}>
             <boxGeometry args={[0.15, 0.15, 0.15]} />
-            <meshBasicMaterial color="white" transparent opacity={0.6} />
+            <meshBasicMaterial transparent opacity={0.8} />
         </instancedMesh>
     );
 };

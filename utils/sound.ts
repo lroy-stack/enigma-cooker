@@ -1,3 +1,4 @@
+
 class SoundManager {
   private ctx: AudioContext | null = null;
   public muted: boolean = false;
@@ -95,8 +96,70 @@ class SoundManager {
     osc.stop(t + 0.1);
   }
 
+  playLetterCollect() {
+    if (this.muted) return;
+    this.init();
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    // Magical chime
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1000, t);
+    osc.frequency.linearRampToValueAtTime(2000, t + 0.2);
+    gain.gain.setValueAtTime(0.2, t);
+    gain.gain.linearRampToValueAtTime(0, t + 0.5);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start();
+    osc.stop(t + 0.5);
+  }
+
+  playLevelUp() {
+    if (this.muted) return;
+    this.init();
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    // Fanfare
+    [440, 554, 659, 880].forEach((freq, i) => {
+        const osc = this.ctx!.createOscillator();
+        const gain = this.ctx!.createGain();
+        osc.type = 'square';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.1, t + i * 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.1 + 0.5);
+        osc.connect(gain);
+        gain.connect(this.ctx!.destination);
+        osc.start(t + i * 0.1);
+        osc.stop(t + i * 0.1 + 0.5);
+    });
+  }
+
   playCrash() {
     this.playTone(100, 'sawtooth', 0.5, 0.3);
+  }
+  
+  playSlip() {
+    if (this.muted) return;
+    this.init();
+    if (!this.ctx) return;
+    // Slide whistle effect
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(600, t);
+    osc.frequency.linearRampToValueAtTime(300, t + 0.5);
+    gain.gain.setValueAtTime(0.2, t);
+    gain.gain.linearRampToValueAtTime(0, t + 0.5);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start();
+    osc.stop(t + 0.5);
+  }
+
+  playClank() {
+    this.playTone(800, 'square', 0.1, 0.1);
   }
 
   playFuryStart() {

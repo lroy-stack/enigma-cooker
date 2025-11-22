@@ -1,8 +1,9 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { PerspectiveCamera, Environment, SpotLight } from '@react-three/drei';
 import * as THREE from 'three';
-import { GameStatus, Lane, EntityType, GameEntity, GameState, Particle, FURY_DURATION, POWERUP_DURATION, BASE_SPEED, MAX_SPEED, FURY_SPEED_MULTIPLIER, JUMP_FORCE, GRAVITY } from '../types';
+import { GameStatus, Lane, EntityType, GameEntity, GameState, Particle, FURY_DURATION, POWERUP_DURATION, BASE_SPEED, MAX_SPEED, FURY_SPEED_MULTIPLIER, JUMP_FORCE, GRAVITY, TARGET_WORD, Difficulty } from '../types';
 import { ChefModel, EntityModel, KitchenSegment, GiantProp, GiantBackgroundProp, InstancedParticles } from './GameModels';
 import { soundManager } from '../utils/sound';
 
@@ -12,13 +13,38 @@ interface GameSceneProps {
   onGameOver: (score: number) => void;
 }
 
-const SPAWN_DISTANCE = 80;
-const DESPAWN_DISTANCE = 10;
-const COLLISION_THRESHOLD = 0.8;
-const LANE_WIDTH = 2.2;
 const TILE_LENGTH = 100;
+const LANE_WIDTH = 2.2;
+const COLLISION_THRESHOLD = 0.8;
 
-type Pattern = (z: number) => GameEntity[];
+// Difficulty Settings
+const getDifficultySettings = (difficulty: Difficulty, level: number) => {
+    let speedMod = 1;
+    let spawnDist = 80;
+    let density = 0.3;
+
+    switch(difficulty) {
+        case Difficulty.EASY:
+            speedMod = 0.8 + (level * 0.05);
+            spawnDist = 90;
+            density = 0.2;
+            break;
+        case Difficulty.MEDIUM:
+            speedMod = 1.0 + (level * 0.1);
+            spawnDist = 80;
+            density = 0.4;
+            break;
+        case Difficulty.HARD:
+            speedMod = 1.3 + (level * 0.15);
+            spawnDist = 70;
+            density = 0.6;
+            break;
+    }
+    return { speedMod, spawnDist, density };
+};
+
+// Patterns
+type Pattern = (z: number, difficulty: Difficulty) => GameEntity[];
 
 const createSingleLinePattern: Pattern = (z) => {
     const lane = [Lane.LEFT, Lane.MIDDLE, Lane.RIGHT][Math.floor(Math.random() * 3)];
@@ -29,6 +55,7 @@ const createSingleLinePattern: Pattern = (z) => {
             type: EntityType.ITEM_TOMATO,
             x: lane,
             z: z - (i * 2),
+            y: 0.5,
             active: true
         });
     }
@@ -46,6 +73,7 @@ const createWallPattern: Pattern = (z) => {
                 type: Math.random() > 0.5 ? EntityType.OBSTACLE_POT : EntityType.OBSTACLE_KNIFE,
                 x: lane,
                 z: z,
+                y: 0,
                 active: true
             });
         } else {
@@ -54,6 +82,7 @@ const createWallPattern: Pattern = (z) => {
                 type: EntityType.ITEM_CHEESE,
                 x: lane,
                 z: z,
+                y: 0.5,
                 active: true
             });
         }
@@ -69,8 +98,64 @@ const createPowerupPattern: Pattern = (z) => {
         type: powerups[Math.floor(Math.random() * powerups.length)],
         x: lane,
         z: z,
+        y: 0.8,
         active: true
     }];
+};
+
+const createFallingKnivesPattern: Pattern = (z) => {
+    const entities: GameEntity[] = [];
+    [Lane.LEFT, Lane.MIDDLE, Lane.RIGHT].forEach(lane => {
+        if (Math.random() > 0.3) {
+            entities.push({
+                id: Math.random().toString(),
+                type: EntityType.OBSTACLE_KNIFE,
+                x: lane,
+                z: z,
+                y: 10, // Start high
+                active: true,
+                variant: 0,
+                state: 1 // Falling state
+            });
+        }
+    });
+    return entities;
+};
+
+const createFlashingBurnersPattern: Pattern = (z) => {
+     const entities: GameEntity[] = [];
+     [Lane.LEFT, Lane.MIDDLE, Lane.RIGHT].forEach(lane => {
+         entities.push({
+             id: Math.random().toString(),
+             type: EntityType.OBSTACLE_BURNER,
+             x: lane,
+             z: z,
+             y: 0.1,
+             active: true,
+             variant: 1, // Flashing variant
+             state: Math.random() > 0.5 ? 1 : 0 // Random start state
+         });
+     });
+     return entities;
+};
+
+const createHazardsPattern: Pattern = (z) => {
+    const lane = [Lane.LEFT, Lane.MIDDLE, Lane.RIGHT][Math.floor(Math.random() * 3)];
+    return [{
+        id: Math.random().toString(),
+        type: EntityType.OBSTACLE_OIL,
+        x: lane,
+        z: z,
+        y: 0.02,
+        active: true
+    }];
+};
+
+// Returns the next needed letter for ENIGMA
+const getNextLetter = (collected: string[]) => {
+    const target = TARGET_WORD.split('');
+    if (collected.length >= target.length) return null;
+    return target[collected.length];
 };
 
 const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
@@ -95,23 +180,25 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
     score: 0,
     ingredients: [] as EntityType[],
     shakeIntensity: 0,
+    slipTimer: 0,
+    difficultySettings: getDifficultySettings(gameState.difficulty, gameState.level)
   });
 
   const [renderEntities, setRenderEntities] = useState<GameEntity[]>([]);
   const [currentTileIndex, setCurrentTileIndex] = useState(0);
   
-  // Static props for environment
+  // --- PROP PLACEMENT ---
   const sideProps = useMemo(() => {
       const props = [];
       for(let i=0; i<20; i++) {
           const z = -i * 30;
           const isLeft = i % 2 === 0;
           const type = ['toaster', 'flour', 'milk'][Math.floor(Math.random() * 3)];
-          // Place closer to center for narrower corridor: +/- 6.5
+          // Corrected Scale placement: +/- 8 to be outside lanes but visible
           props.push({ 
               id: i, 
               type, 
-              x: isLeft ? -6.5 : 6.5, 
+              x: isLeft ? -8 : 8, 
               z: z,
               rotation: (Math.random() * 0.5) - 0.2
           });
@@ -119,18 +206,16 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
       return props;
   }, []);
 
-  // Distant props for parallax
   const distantProps = useMemo(() => {
       const props = [];
       for(let i=0; i<10; i++) {
          const z = -i * 150;
          const isLeft = i % 2 === 0;
          const type = Math.random() > 0.5 ? 'fridge' : 'cabinet';
-         // Adjust distant props to align with new narrower wall/room structure
          props.push({
              id: `bg-${i}`,
              type,
-             x: isLeft ? -15 : 15,
+             x: isLeft ? -12 : 12,
              z: z,
              rotation: isLeft ? 0.5 : -0.5
          });
@@ -138,41 +223,47 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
       return props;
   }, []);
 
-  // Reset / Sync
+  // Sync GameState changes
   useEffect(() => {
-    if (gameState.status === GameStatus.MENU) {
-      stateRef.current = {
-        ...stateRef.current,
-        status: GameStatus.MENU,
-        playerZ: 0,
-        playerLane: Lane.MIDDLE,
-        playerY: 0,
-        verticalVelocity: 0,
-        isJumping: false,
-        speed: BASE_SPEED,
-        furyTimer: 0,
-        powerupTimer: 0,
-        activePowerup: null,
-        entities: [],
-        lastSpawnZ: -10,
-        score: 0,
-        ingredients: [],
-        shakeIntensity: 0,
-      };
-      particlesRef.current = [];
-      if (playerRef.current) playerRef.current.position.set(0,0,0);
-      setRenderEntities([]);
-      setCurrentTileIndex(0);
-      soundManager.playAmbient();
-    } else if (gameState.status === GameStatus.PLAYING) {
-      stateRef.current.status = GameStatus.PLAYING;
-    }
-  }, [gameState.status]);
+      if (gameState.status === GameStatus.MENU) {
+          stateRef.current = {
+              ...stateRef.current,
+              status: GameStatus.MENU,
+              playerZ: 0,
+              playerLane: Lane.MIDDLE,
+              playerY: 0,
+              verticalVelocity: 0,
+              isJumping: false,
+              speed: BASE_SPEED,
+              furyTimer: 0,
+              powerupTimer: 0,
+              activePowerup: null,
+              entities: [],
+              lastSpawnZ: -10,
+              score: 0,
+              ingredients: [],
+              shakeIntensity: 0,
+              slipTimer: 0,
+              difficultySettings: getDifficultySettings(gameState.difficulty, 1)
+          };
+          particlesRef.current = [];
+          if (playerRef.current) playerRef.current.position.set(0,0,0);
+          setRenderEntities([]);
+          setCurrentTileIndex(0);
+          soundManager.playAmbient();
+      } else {
+          stateRef.current.status = gameState.status;
+          // Update difficulty settings if level changed
+          stateRef.current.difficultySettings = getDifficultySettings(gameState.difficulty, gameState.level);
+      }
+  }, [gameState.status, gameState.difficulty, gameState.level]);
 
   // Controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (stateRef.current.status !== GameStatus.PLAYING) return;
+      if (stateRef.current.slipTimer > 0) return; // No control while slipping
+
       if (e.key === 'ArrowLeft' || e.key === 'a') {
         if (stateRef.current.playerLane === Lane.RIGHT) stateRef.current.playerLane = Lane.MIDDLE;
         else if (stateRef.current.playerLane === Lane.MIDDLE) stateRef.current.playerLane = Lane.LEFT;
@@ -185,7 +276,7 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
         soundManager.playJump();
       }
     };
-
+    
     let touchStartX = 0;
     let touchStartY = 0;
     const handleTouchStart = (e: TouchEvent) => {
@@ -194,6 +285,8 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
     };
     const handleTouchEnd = (e: TouchEvent) => {
       if (stateRef.current.status !== GameStatus.PLAYING) return;
+      if (stateRef.current.slipTimer > 0) return;
+
       const dx = e.changedTouches[0].screenX - touchStartX;
       const dy = e.changedTouches[0].screenY - touchStartY;
       if (Math.abs(dx) > Math.abs(dy)) {
@@ -243,24 +336,25 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
 
     const dt = Math.min(delta, 0.1);
     const s = stateRef.current;
-    
-    // Speed & Score
-    let targetSpeed = BASE_SPEED + (Math.abs(s.playerZ) * 0.005);
+    const time = state.clock.getElapsedTime();
+
+    // 1. Speed Calculation
+    let targetSpeed = (BASE_SPEED + (Math.abs(s.playerZ) * 0.005)) * s.difficultySettings.speedMod;
     if (s.furyTimer > 0) targetSpeed *= FURY_SPEED_MULTIPLIER;
     if (s.activePowerup === EntityType.POWERUP_TURBO) targetSpeed *= 1.8;
-    targetSpeed = Math.min(targetSpeed, MAX_SPEED);
+    targetSpeed = Math.min(targetSpeed, MAX_SPEED * s.difficultySettings.speedMod);
+    
     s.speed = THREE.MathUtils.lerp(s.speed, targetSpeed, dt * 2);
-
     s.playerZ -= s.speed * dt;
     s.score += (s.speed * dt) * 0.5;
 
-    // Floor Tiling
+    // 2. Floor Logic
     const newTileIndex = Math.floor(s.playerZ / TILE_LENGTH);
     if (newTileIndex !== currentTileIndex) {
         setCurrentTileIndex(newTileIndex);
     }
 
-    // Timers
+    // 3. Timers
     if (s.furyTimer > 0) {
         s.furyTimer -= dt;
         if (s.furyTimer <= 0) setGameState(prev => ({ ...prev, furyMode: false }));
@@ -272,16 +366,32 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
             setGameState(prev => ({ ...prev, shieldActive: false, magnetActive: false }));
         }
     }
+    if (s.slipTimer > 0) {
+        s.slipTimer -= dt;
+        if (s.slipTimer <= 0) setGameState(prev => ({ ...prev, isSlipping: false }));
+        // Spin player while slipping
+        if (playerRef.current) playerRef.current.rotation.y += dt * 10;
+    } else {
+        if (playerRef.current) playerRef.current.rotation.y = 0;
+    }
 
-    // Player Physics
+    // 4. Player Movement
     if (playerRef.current) {
-      playerRef.current.position.x = THREE.MathUtils.lerp(playerRef.current.position.x, s.playerLane * (LANE_WIDTH/2), dt * 12);
-      const tilt = (playerRef.current.position.x - (s.playerLane * (LANE_WIDTH/2))) * -0.2;
+      const targetX = s.playerLane * (LANE_WIDTH / 2);
+      
+      if (s.slipTimer > 0) {
+          // Drifting when slipping
+          playerRef.current.position.x += Math.sin(time * 10) * dt * 5;
+      } else {
+          playerRef.current.position.x = THREE.MathUtils.lerp(playerRef.current.position.x, targetX, dt * 12);
+      }
+      
+      const tilt = (playerRef.current.position.x - targetX) * -0.2;
       playerRef.current.rotation.z = THREE.MathUtils.lerp(playerRef.current.rotation.z, tilt, dt * 10);
       playerRef.current.position.z = s.playerZ;
     }
 
-    // Jump
+    // 5. Jump Physics
     if (s.isJumping) {
       s.playerY += s.verticalVelocity * dt;
       s.verticalVelocity -= GRAVITY * dt;
@@ -293,20 +403,42 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
       if (playerRef.current) playerRef.current.position.y = s.playerY;
     }
 
-    // Particles & Effect Logic
+    // 6. Entity Logic (Movement & Particles)
     s.entities.forEach(e => {
-        if (e.active && e.z > s.playerZ - 30 && e.z < s.playerZ + 10) {
-             if ((e.type === EntityType.OBSTACLE_POT || e.type === EntityType.OBSTACLE_BURNER) && Math.random() < 0.1) {
+        if (e.active && e.z > s.playerZ - 40 && e.z < s.playerZ + 10) {
+            // Moving logic
+            if (e.type === EntityType.OBSTACLE_POT && e.initialX !== undefined) {
+               // Moving pot logic
+            }
+            
+            // Falling logic
+            if (e.state === 1 && e.y > 0) {
+                 if (e.z > s.playerZ - 30) { // Start falling when close
+                     e.y -= 15 * dt;
+                     if (e.y < 0) e.y = 0;
+                 }
+            }
+
+            // Flashing Logic
+            if (e.type === EntityType.OBSTACLE_BURNER && e.variant === 1) {
+                // Toggle state every 1.5s based on time
+                const cycle = Math.floor(time / 1.5);
+                e.state = cycle % 2;
+            }
+
+            // Particles
+            if ((e.type === EntityType.OBSTACLE_POT || (e.type === EntityType.OBSTACLE_BURNER && e.state === 1)) && Math.random() < 0.1) {
                  spawnParticles(e.x, 1, e.z, "white", 1, true);
-             }
+            }
         }
     });
 
+    // 7. Particle Physics
     for (let i = particlesRef.current.length - 1; i >= 0; i--) {
         const p = particlesRef.current[i];
         p.x += p.vx * dt;
         p.y += p.vy * dt;
-        p.z += p.vz * dt + (s.speed * dt * 0.1);
+        p.z += p.vz * dt + (s.speed * dt * 0.1); // Move with world relative speed
         p.vy -= (p.life > 1.5 ? -2 : 5) * dt;
         p.life -= dt * 1.0;
         if (p.life <= 0 || p.y < 0) {
@@ -314,7 +446,7 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
         }
     }
 
-    // Camera - Adaptive for Mobile Portrait
+    // 8. Camera
     if (cameraRef.current) {
       const aspect = size.width / size.height;
       const isPortrait = aspect < 1;
@@ -323,10 +455,8 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
       const shakeX = (Math.random() - 0.5) * s.shakeIntensity;
       const shakeY = (Math.random() - 0.5) * s.shakeIntensity;
 
-      // In portrait, we need to pull camera back significantly to see horizontal lanes
       const baseDist = isPortrait ? 14 : (s.activePowerup === EntityType.POWERUP_TURBO ? 9 : 7);
       const baseHeight = isPortrait ? 6.5 : (3.5 + (s.playerY * 0.3));
-      
       const baseFov = isPortrait ? 80 : 60;
       const fovTarget = s.activePowerup === EntityType.POWERUP_TURBO ? baseFov + 15 : (s.furyTimer > 0 ? baseFov + 10 : baseFov);
       
@@ -340,39 +470,61 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
       cameraRef.current.lookAt(0 + shakeX, 1 + shakeY, s.playerZ - 10);
     }
 
-    // Spawning
-    if (s.playerZ - s.lastSpawnZ < -20) {
+    // 9. Spawning System
+    if (s.playerZ - s.lastSpawnZ < -s.difficultySettings.spawnDist / 4) { // Spawn frequently in small chunks
       s.lastSpawnZ = s.playerZ;
-      const spawnZ = s.playerZ - SPAWN_DISTANCE;
+      const spawnZ = s.playerZ - s.difficultySettings.spawnDist;
       
       const r = Math.random();
       let newEntities: GameEntity[] = [];
       
-      if (r < 0.1 && !s.activePowerup) {
-          newEntities = createPowerupPattern(spawnZ);
-      } else if (r < 0.4) {
-          newEntities = createSingleLinePattern(spawnZ);
-      } else if (r < 0.7) {
-          newEntities = createWallPattern(spawnZ);
+      const nextLetter = getNextLetter(gameState.collectedLetters);
+      
+      // Priority: Letter -> Powerup -> Obstacles
+      if (nextLetter && r < 0.08) { // 8% chance for letter
+          const lane = [Lane.LEFT, Lane.MIDDLE, Lane.RIGHT][Math.floor(Math.random() * 3)];
+          newEntities.push({
+              id: `letter-${Date.now()}`,
+              type: EntityType.ITEM_LETTER,
+              letter: nextLetter,
+              x: lane,
+              z: spawnZ,
+              y: 1,
+              active: true
+          });
+      } else if (r < 0.12 && !s.activePowerup) {
+          newEntities = createPowerupPattern(spawnZ, gameState.difficulty);
       } else {
-          const lane = [Lane.LEFT, Lane.MIDDLE, Lane.RIGHT][Math.floor(Math.random()*3)];
-          const type = Math.random() > 0.5 ? EntityType.OBSTACLE_KNIFE : EntityType.OBSTACLE_BURNER;
-          newEntities.push({ id: Math.random().toString(), type, x: lane, z: spawnZ, active: true });
+          // Choose obstacle pattern
+          const patternRoll = Math.random();
+          if (patternRoll < 0.2) newEntities = createSingleLinePattern(spawnZ, gameState.difficulty);
+          else if (patternRoll < 0.4) newEntities = createWallPattern(spawnZ, gameState.difficulty);
+          else if (patternRoll < 0.5 && gameState.difficulty !== Difficulty.EASY) newEntities = createFallingKnivesPattern(spawnZ, gameState.difficulty);
+          else if (patternRoll < 0.6 && gameState.difficulty !== Difficulty.EASY) newEntities = createFlashingBurnersPattern(spawnZ, gameState.difficulty);
+          else if (patternRoll < 0.7) newEntities = createHazardsPattern(spawnZ, gameState.difficulty);
+          else {
+             // Random Single Obstacle
+             const lane = [Lane.LEFT, Lane.MIDDLE, Lane.RIGHT][Math.floor(Math.random()*3)];
+             const type = Math.random() > 0.5 ? EntityType.OBSTACLE_KNIFE : EntityType.OBSTACLE_BURNER;
+             newEntities.push({ id: Math.random().toString(), type, x: lane, z: spawnZ, y: 0, active: true });
+          }
       }
       
       s.entities.push(...newEntities);
-      s.entities = s.entities.filter(e => e.z < s.playerZ + DESPAWN_DISTANCE && e.active);
+      // Despawn old
+      s.entities = s.entities.filter(e => e.z < s.playerZ + 10 && e.active);
       setRenderEntities([...s.entities]);
     }
 
-    // Collision Detection
+    // 10. Collision Detection
     let needsUpdate = false;
     s.entities.forEach(entity => {
        if (!entity.active) return;
 
-       if (s.activePowerup === EntityType.POWERUP_MAGNET && entity.type.startsWith('ITEM')) {
+       // Magnet Logic
+       if (s.activePowerup === EntityType.POWERUP_MAGNET && (entity.type.startsWith('ITEM') || entity.type === EntityType.ITEM_LETTER)) {
            const dist = Math.sqrt(Math.pow(entity.x - playerRef.current!.position.x, 2) + Math.pow(entity.z - s.playerZ, 2));
-           if (dist < 10) {
+           if (dist < 15) {
                entity.x = THREE.MathUtils.lerp(entity.x, playerRef.current!.position.x, dt * 5);
                entity.z = THREE.MathUtils.lerp(entity.z, s.playerZ, dt * 5);
                needsUpdate = true;
@@ -381,26 +533,37 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
 
        const dz = Math.abs(entity.z - s.playerZ);
        const dx = Math.abs(entity.x - (playerRef.current?.position.x || 0));
+       const dy = Math.abs(entity.y - s.playerY);
 
-       if (dz < COLLISION_THRESHOLD && dx < 0.7) {
-         if (entity.type.startsWith('ITEM') || entity.type.startsWith('POWERUP')) {
-            soundManager.playCollect();
+       // Collision check
+       if (dz < COLLISION_THRESHOLD && dx < 0.7 && dy < 1.0) {
+         
+         // --- ITEMS ---
+         if (entity.type.startsWith('ITEM')) {
             entity.active = false;
             needsUpdate = true;
             
-            if (entity.type.startsWith('POWERUP')) {
-                soundManager.playPowerup(
-                    entity.type === EntityType.POWERUP_SHIELD ? 'shield' : 
-                    entity.type === EntityType.POWERUP_MAGNET ? 'magnet' : 'turbo'
-                );
-                s.activePowerup = entity.type;
-                s.powerupTimer = POWERUP_DURATION;
-                setGameState(prev => ({ 
-                    ...prev, 
-                    shieldActive: entity.type === EntityType.POWERUP_SHIELD,
-                    magnetActive: entity.type === EntityType.POWERUP_MAGNET
-                }));
+            if (entity.type === EntityType.ITEM_LETTER && entity.letter) {
+                 // Collected Letter
+                 const newCollected = [...gameState.collectedLetters, entity.letter];
+                 soundManager.playLetterCollect();
+                 spawnParticles(entity.x, 1, entity.z, "#a855f7", 10);
+                 setGameState(prev => ({ ...prev, collectedLetters: newCollected }));
+
+                 if (newCollected.length === TARGET_WORD.length) {
+                     // LEVEL UP
+                     soundManager.playLevelUp();
+                     setGameState(prev => ({ 
+                         ...prev, 
+                         collectedLetters: [], 
+                         level: prev.level + 1,
+                         score: prev.score + 1000
+                     }));
+                 }
+
             } else {
+                // Ingredients
+                soundManager.playCollect();
                 s.score += 50;
                 spawnParticles(entity.x, 0.5, entity.z, "gold", 5);
                 
@@ -419,13 +582,50 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
                 }
                 setGameState(prev => ({ ...prev, score: s.score, ingredients: s.ingredients }));
             }
+
+         } else if (entity.type.startsWith('POWERUP')) {
+             // --- POWERUPS ---
+            entity.active = false;
+            needsUpdate = true;
+            soundManager.playPowerup(
+                entity.type === EntityType.POWERUP_SHIELD ? 'shield' : 
+                entity.type === EntityType.POWERUP_MAGNET ? 'magnet' : 'turbo'
+            );
+            s.activePowerup = entity.type;
+            s.powerupTimer = POWERUP_DURATION;
+            setGameState(prev => ({ 
+                ...prev, 
+                shieldActive: entity.type === EntityType.POWERUP_SHIELD,
+                magnetActive: entity.type === EntityType.POWERUP_MAGNET
+            }));
+
+         } else if (entity.type === EntityType.OBSTACLE_OIL) {
+             // --- OIL SPILL ---
+             entity.active = false;
+             soundManager.playSlip();
+             s.slipTimer = 2.0;
+             setGameState(prev => ({ ...prev, isSlipping: true }));
+
+         } else if (entity.type === EntityType.DECOR_SPOON) {
+             // --- DECOR PHYSICS ---
+             entity.active = false;
+             soundManager.playClank();
+             // Physics impulse effect (fake physics)
+             spawnParticles(entity.x, 0.5, entity.z, "gray", 3);
+             needsUpdate = true;
+
          } else {
+            // --- OBSTACLES ---
             const isJumpable = entity.type === EntityType.OBSTACLE_POT || entity.type === EntityType.OBSTACLE_BURNER;
             const isHighEnough = s.playerY > 1.2;
 
-            if (isJumpable && isHighEnough) {
+            // Special case: Flashing Burner is safe when OFF (state 0)
+            if (entity.type === EntityType.OBSTACLE_BURNER && entity.variant === 1 && entity.state === 0) {
+                // Safe
+            } else if (isJumpable && isHighEnough) {
                 // Dodged
             } else {
+                // HIT
                 if (s.activePowerup === EntityType.POWERUP_SHIELD) {
                     entity.active = false;
                     s.activePowerup = null;
@@ -462,9 +662,8 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
     <>
       <PerspectiveCamera ref={cameraRef} makeDefault position={[0, 4, 8]} fov={60} />
       
-      {/* --- Lighting & Atmosphere --- */}
       <color attach="background" args={['#fff7ed']} />
-      <fog attach="fog" args={['#fff7ed', 20, 90]} />
+      <fog attach="fog" args={['#fff7ed', 20, 80]} />
 
       <ambientLight intensity={0.8} color="#fff7ed" />
       <directionalLight 
@@ -485,14 +684,12 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
          target={playerRef.current || undefined}
       />
 
-      {/* --- Infinite Room (Floor + Walls) --- */}
       <group>
            <KitchenSegment position={[0, 0, (currentTileIndex + 1) * TILE_LENGTH]} />
            <KitchenSegment position={[0, 0, currentTileIndex * TILE_LENGTH]} />
            <KitchenSegment position={[0, 0, (currentTileIndex - 1) * TILE_LENGTH]} />
       </group>
 
-      {/* --- Giant Props --- */}
       {sideProps.map(prop => {
           const loopLength = 600;
           const relativeZ = (prop.z - stateRef.current.playerZ) % loopLength;
@@ -535,7 +732,6 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
             isJumping={stateRef.current.isJumping}
             shieldActive={stateRef.current.shieldActive}
         />
-        {/* Shadow Blob */}
         <mesh rotation={[-Math.PI/2, 0, 0]} position={[0, 0.02, 0]}>
             <circleGeometry args={[0.4, 32]} />
             <meshBasicMaterial color="black" opacity={0.3} transparent />
@@ -544,8 +740,13 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
 
       {renderEntities.map(entity => (
           entity.active && (
-              <group key={entity.id} position={[entity.x, 0, entity.z]}>
-                  <EntityModel type={entity.type} />
+              <group key={entity.id} position={[entity.x, entity.y, entity.z]}>
+                  <EntityModel 
+                    type={entity.type} 
+                    letter={entity.letter}
+                    variant={entity.variant}
+                    customState={entity.state}
+                  />
               </group>
           )
       ))}

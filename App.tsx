@@ -1,10 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import GameScene from './components/GameScene';
-import { GameStatus, GameState, EntityType, FURY_DURATION, UserSession } from './types';
+import { GameStatus, GameState, EntityType, FURY_DURATION, UserSession, Difficulty, TARGET_WORD } from './types';
 import { soundManager } from './utils/sound';
 import { storage } from './utils/storage';
-
-// --- Icons & SVG Components ---
 
 const IconTomato = ({ className }: { className?: string }) => (
   <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
@@ -80,21 +79,25 @@ const LeaderboardItem = ({ rank, name, score, isSelf }: any) => (
 export default function App() {
   const [gameState, setGameState] = useState<GameState>({
     status: GameStatus.MENU,
+    difficulty: Difficulty.MEDIUM,
+    level: 1,
     score: 0,
     speed: 0,
     ingredients: [],
+    collectedLetters: [],
     furyMode: false,
     furyTimer: 0,
     shieldActive: false,
-    magnetActive: false
+    magnetActive: false,
+    isSlipping: false
   });
 
   const [session, setSession] = useState<UserSession | null>(null);
   const [muted, setMuted] = useState(false);
   const [displayScore, setDisplayScore] = useState(0);
   const [view, setView] = useState<'MENU' | 'PROFILE' | 'LEADERBOARD'>('MENU');
+  const [selectedDifficulty, setSelectedDifficulty] = useState<Difficulty>(Difficulty.MEDIUM);
   
-  // Profile form
   const [tempName, setTempName] = useState("");
   const [tempEmail, setTempEmail] = useState("");
 
@@ -113,13 +116,17 @@ export default function App() {
   const startGame = () => {
     setGameState({
       status: GameStatus.PLAYING,
+      difficulty: selectedDifficulty,
+      level: 1,
       score: 0,
       speed: 10,
       ingredients: [],
+      collectedLetters: [],
       furyMode: false,
       furyTimer: 0,
       shieldActive: false,
-      magnetActive: false
+      magnetActive: false,
+      isSlipping: false
     });
   };
 
@@ -138,7 +145,6 @@ export default function App() {
     }
   };
 
-  // Score Interpolation
   useEffect(() => {
     if (gameState.status !== GameStatus.PLAYING) return;
     const target = Math.floor(gameState.score);
@@ -169,7 +175,7 @@ export default function App() {
         }`}
       >
         <div className="flex justify-between items-start">
-          <div className="flex flex-col items-start gap-1">
+          <div className="flex flex-col items-start gap-2">
              <div className="bg-white border-b-4 border-r-4 border-orange-200 rounded-2xl px-4 py-2 md:px-6 md:py-3 shadow-lg flex items-center gap-2 md:gap-3 transform -rotate-2">
                 <span className="text-orange-400 text-xl md:text-2xl">★</span>
                 <div className="flex flex-col">
@@ -179,9 +185,15 @@ export default function App() {
                    </span>
                 </div>
              </div>
+
+             <div className="bg-white/90 rounded-xl px-3 py-1 shadow-md flex flex-col">
+                 <div className="text-[10px] text-gray-500 font-bold uppercase">Level</div>
+                 <div className="text-xl font-black text-purple-600">{gameState.level}</div>
+             </div>
           </div>
 
           <div className="flex flex-col items-end gap-2 md:gap-4">
+            {/* Ingredients */}
             <div className="flex items-center gap-1 md:gap-2 bg-black/20 backdrop-blur-sm p-1.5 md:p-2 rounded-full border border-white/20">
                {[0, 1, 2].map((i) => {
                  const item = gameState.ingredients[i];
@@ -200,7 +212,8 @@ export default function App() {
                  );
                })}
             </div>
-
+            
+            {/* Fury Bar */}
             <div className={`transition-all duration-300 flex flex-col items-end ${gameState.furyMode ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-10'}`}>
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-yellow-300 font-bold uppercase text-xs md:text-sm animate-pulse">Chef Fury!</span>
@@ -219,8 +232,30 @@ export default function App() {
           </div>
         </div>
         
+        {/* ENIGMA Tracker */}
+        <div className="absolute top-24 left-1/2 transform -translate-x-1/2 flex gap-1 md:gap-2">
+            {TARGET_WORD.split('').map((char, idx) => {
+                const isCollected = idx < gameState.collectedLetters.length;
+                return (
+                    <div 
+                        key={idx}
+                        className={`
+                            w-8 h-8 md:w-10 md:h-10 rounded-lg border-2 flex items-center justify-center
+                            font-black text-lg md:text-xl transition-all duration-300
+                            ${isCollected 
+                                ? 'bg-purple-600 border-purple-300 text-white shadow-[0_0_15px_rgba(168,85,247,0.8)] scale-110' 
+                                : 'bg-black/40 border-white/20 text-white/20'
+                            }
+                        `}
+                    >
+                        {char}
+                    </div>
+                )
+            })}
+        </div>
+
         {/* Powerup Status */}
-        <div className="absolute top-24 md:top-32 right-2 md:right-4 flex flex-col gap-2 items-end">
+        <div className="absolute top-36 right-2 md:right-4 flex flex-col gap-2 items-end">
              {gameState.shieldActive && (
                  <div className="bg-blue-500 text-white px-3 py-1 md:px-4 md:py-2 text-sm md:text-base rounded-full font-bold animate-pulse shadow-lg">🛡️ Shield</div>
              )}
@@ -241,7 +276,7 @@ export default function App() {
                 {muted ? <IconSoundOff className="w-6 h-6" /> : <IconSoundOn className="w-6 h-6" />}
              </button>
 
-             <div className="mb-6 mt-2">
+             <div className="mb-4 mt-2">
                 <div className="inline-block p-4 rounded-full bg-orange-100 mb-4 shadow-inner">
                    <span className="text-5xl md:text-6xl filter drop-shadow-lg">👨‍🍳</span>
                 </div>
@@ -252,8 +287,7 @@ export default function App() {
 
              {view === 'MENU' && session && (
                <>
-                {/* Main Menu */}
-                 <div className="bg-orange-50 rounded-2xl p-4 mb-6 border-2 border-orange-100 shadow-sm">
+                 <div className="bg-orange-50 rounded-2xl p-4 mb-4 border-2 border-orange-100 shadow-sm">
                      <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setView('PROFILE')}>
                            <span className="text-gray-500 text-xs md:text-sm font-bold uppercase">Chef:</span>
@@ -264,6 +298,25 @@ export default function App() {
                             <div className="text-[10px] md:text-xs text-gray-500 font-bold uppercase">Best</div>
                             <div className="text-xl md:text-2xl font-black text-orange-600">{session.highScore}</div>
                         </div>
+                     </div>
+                 </div>
+
+                 <div className="mb-6">
+                     <div className="text-sm font-bold text-gray-500 uppercase mb-2">Difficulty</div>
+                     <div className="flex gap-2 justify-center">
+                         {[Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD].map(d => (
+                             <button
+                                key={d}
+                                onClick={() => setSelectedDifficulty(d)}
+                                className={`px-4 py-2 rounded-lg font-bold text-sm transition-all ${
+                                    selectedDifficulty === d 
+                                    ? 'bg-orange-500 text-white shadow-lg scale-105' 
+                                    : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+                                }`}
+                             >
+                                 {d}
+                             </button>
+                         ))}
                      </div>
                  </div>
 
