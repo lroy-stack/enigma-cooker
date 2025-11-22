@@ -1,5 +1,6 @@
 class SoundManager {
   private ctx: AudioContext | null = null;
+  public muted: boolean = false;
 
   constructor() {
     // Initialize on first user interaction usually, but we prepare the class
@@ -9,12 +10,25 @@ class SoundManager {
     if (!this.ctx) {
       this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
-    if (this.ctx.state === 'suspended') {
+    if (this.ctx.state === 'suspended' && !this.muted) {
       this.ctx.resume();
     }
   }
 
+  toggleMute() {
+    this.muted = !this.muted;
+    if (this.ctx) {
+        if (this.muted) {
+            this.ctx.suspend();
+        } else {
+            this.ctx.resume();
+        }
+    }
+    return this.muted;
+  }
+
   playJump() {
+    if (this.muted) return;
     this.init();
     if (!this.ctx) return;
     const osc = this.ctx.createOscillator();
@@ -31,6 +45,7 @@ class SoundManager {
   }
 
   playCollect() {
+    if (this.muted) return;
     this.init();
     if (!this.ctx) return;
     const osc = this.ctx.createOscillator();
@@ -47,6 +62,7 @@ class SoundManager {
   }
 
   playCrash() {
+    if (this.muted) return;
     this.init();
     if (!this.ctx) return;
     const osc = this.ctx.createOscillator();
@@ -63,6 +79,7 @@ class SoundManager {
   }
 
   playFuryStart() {
+    if (this.muted) return;
     this.init();
     if (!this.ctx) return;
     const osc = this.ctx.createOscillator();
