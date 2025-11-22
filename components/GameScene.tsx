@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { PerspectiveCamera, Environment, SpotLight } from '@react-three/drei';
 import * as THREE from 'three';
 import { GameStatus, Lane, EntityType, GameEntity, GameState, Particle, FURY_DURATION, POWERUP_DURATION, BASE_SPEED, MAX_SPEED, FURY_SPEED_MULTIPLIER, JUMP_FORCE, GRAVITY } from '../types';
@@ -77,6 +77,7 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
   const playerRef = useRef<THREE.Group>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera>(null);
   const particlesRef = useRef<Particle[]>([]);
+  const { size } = useThree();
   
   const stateRef = useRef({
     status: gameState.status,
@@ -106,10 +107,11 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
           const z = -i * 30;
           const isLeft = i % 2 === 0;
           const type = ['toaster', 'flour', 'milk'][Math.floor(Math.random() * 3)];
+          // Place closer to center for narrower corridor: +/- 6.5
           props.push({ 
               id: i, 
               type, 
-              x: isLeft ? -15 : 15, 
+              x: isLeft ? -6.5 : 6.5, 
               z: z,
               rotation: (Math.random() * 0.5) - 0.2
           });
@@ -124,10 +126,11 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
          const z = -i * 150;
          const isLeft = i % 2 === 0;
          const type = Math.random() > 0.5 ? 'fridge' : 'cabinet';
+         // Adjust distant props to align with new narrower wall/room structure
          props.push({
              id: `bg-${i}`,
              type,
-             x: isLeft ? -30 : 30,
+             x: isLeft ? -15 : 15,
              z: z,
              rotation: isLeft ? 0.5 : -0.5
          });
@@ -311,22 +314,28 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
         }
     }
 
-    // Camera
+    // Camera - Adaptive for Mobile Portrait
     if (cameraRef.current) {
+      const aspect = size.width / size.height;
+      const isPortrait = aspect < 1;
+      
       s.shakeIntensity = THREE.MathUtils.lerp(s.shakeIntensity, 0, dt * 5);
       const shakeX = (Math.random() - 0.5) * s.shakeIntensity;
       const shakeY = (Math.random() - 0.5) * s.shakeIntensity;
 
-      const camDist = s.activePowerup === EntityType.POWERUP_TURBO ? 9 : 7;
-      const camHeight = 3.5 + (s.playerY * 0.3);
-      const fovTarget = s.activePowerup === EntityType.POWERUP_TURBO ? 85 : (s.furyTimer > 0 ? 75 : 60);
+      // In portrait, we need to pull camera back significantly to see horizontal lanes
+      const baseDist = isPortrait ? 14 : (s.activePowerup === EntityType.POWERUP_TURBO ? 9 : 7);
+      const baseHeight = isPortrait ? 6.5 : (3.5 + (s.playerY * 0.3));
+      
+      const baseFov = isPortrait ? 80 : 60;
+      const fovTarget = s.activePowerup === EntityType.POWERUP_TURBO ? baseFov + 15 : (s.furyTimer > 0 ? baseFov + 10 : baseFov);
       
       cameraRef.current.fov = THREE.MathUtils.lerp(cameraRef.current.fov, fovTarget, dt * 2);
       cameraRef.current.updateProjectionMatrix();
 
-      const targetZ = s.playerZ + camDist;
+      const targetZ = s.playerZ + baseDist;
       cameraRef.current.position.z = THREE.MathUtils.lerp(cameraRef.current.position.z, targetZ, dt * 10);
-      cameraRef.current.position.y = THREE.MathUtils.lerp(cameraRef.current.position.y, camHeight, dt * 5);
+      cameraRef.current.position.y = THREE.MathUtils.lerp(cameraRef.current.position.y, baseHeight, dt * 5);
       cameraRef.current.position.x = THREE.MathUtils.lerp(cameraRef.current.position.x, (s.playerLane * 0.5) + shakeX, dt * 3);
       cameraRef.current.lookAt(0 + shakeX, 1 + shakeY, s.playerZ - 10);
     }

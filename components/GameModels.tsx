@@ -12,7 +12,7 @@ const useProceduralTextures = () => {
         // Helper to add noise/grain
         const addNoise = (ctx: CanvasRenderingContext2D, w: number, h: number, amount: number) => {
              ctx.globalCompositeOperation = 'overlay';
-             for(let i=0; i< 6000; i++) {
+             for(let i=0; i< 8000; i++) {
                  ctx.fillStyle = Math.random() > 0.5 ? '#000' : '#fff';
                  ctx.globalAlpha = 0.03 * amount;
                  const x = Math.random() * w;
@@ -82,15 +82,27 @@ const useProceduralTextures = () => {
             
             // Scratches & Wear
             ctxWood.strokeStyle = '#9a6340'; 
-            ctxWood.globalAlpha = 0.15;
+            ctxWood.globalAlpha = 0.2;
             ctxWood.beginPath();
-            for(let s=0; s<60; s++) {
+            for(let s=0; s<80; s++) {
                 const sx = Math.random() * width;
                 const sy = Math.random() * height;
                 ctxWood.moveTo(sx, sy);
-                ctxWood.lineTo(sx + (Math.random()-0.5)*30, sy + (Math.random()-0.5)*30);
+                ctxWood.lineTo(sx + (Math.random()-0.5)*40, sy + (Math.random()-0.5)*40);
             }
             ctxWood.stroke();
+            
+            // Dried spills (dark patches)
+            ctxWood.globalAlpha = 0.1;
+            ctxWood.fillStyle = '#1a0f0a';
+            for(let p=0; p<5; p++) {
+                const px = Math.random() * width;
+                const py = Math.random() * height;
+                const pr = 20 + Math.random() * 50;
+                ctxWood.beginPath();
+                ctxWood.arc(px, py, pr, 0, Math.PI*2);
+                ctxWood.fill();
+            }
             ctxWood.globalAlpha = 1.0;
         }
         const texWood = new THREE.CanvasTexture(canvasWood);
@@ -104,8 +116,16 @@ const useProceduralTextures = () => {
         canvasTile.height = height;
         const ctxTile = canvasTile.getContext('2d');
         if (ctxTile) {
-            ctxTile.fillStyle = '#cbd5e1'; // Grout color
+            // Base Grout
+            ctxTile.fillStyle = '#cbd5e1'; // Base grout color
             ctxTile.fillRect(0, 0, width, height);
+            
+            // Grout Detail: Noise and darkening
+            addNoise(ctxTile, width, height, 1.0);
+            ctxTile.fillStyle = 'rgba(0,0,0,0.1)';
+            for(let g=0; g<50; g++) {
+                 ctxTile.fillRect(Math.random()*width, Math.random()*height, Math.random()*50, 2);
+            }
             
             const tileSizeW = 128;
             const tileSizeH = 64;
@@ -116,7 +136,7 @@ const useProceduralTextures = () => {
                 const offset = y % 2 === 0 ? 0 : -tileSizeW/2;
                 for(let x=0; x<(width/tileSizeW)+1; x++) {
                     // Variation in tile white/off-white
-                    const val = 240 + Math.random() * 15;
+                    const val = 230 + Math.random() * 25;
                     ctxTile.fillStyle = `rgb(${val}, ${val}, ${val})`;
                     
                     const drawX = x*tileSizeW + offset + gap/2;
@@ -135,15 +155,59 @@ const useProceduralTextures = () => {
                     ctxTile.fillStyle = 'rgba(0,0,0,0.1)';
                     ctxTile.fillRect(drawX, drawY + drawH - 3, drawW, 3);
                     ctxTile.fillRect(drawX + drawW - 3, drawY, 3, drawH);
+
+                    // Chipped Corners (Wear & Tear)
+                    if (Math.random() < 0.08) {
+                         const chipSize = 4 + Math.random() * 8;
+                         ctxTile.fillStyle = '#94a3b8'; // Reveal cement underneath
+                         ctxTile.beginPath();
+                         // Randomly pick a corner
+                         if (Math.random() > 0.5) {
+                             // Bottom right chip
+                             ctxTile.moveTo(drawX + drawW, drawY + drawH - chipSize);
+                             ctxTile.lineTo(drawX + drawW, drawY + drawH);
+                             ctxTile.lineTo(drawX + drawW - chipSize, drawY + drawH);
+                         } else {
+                             // Top left chip
+                             ctxTile.moveTo(drawX, drawY + chipSize);
+                             ctxTile.lineTo(drawX, drawY);
+                             ctxTile.lineTo(drawX + chipSize, drawY);
+                         }
+                         ctxTile.fill();
+                    }
+
+                    // Hairline Cracks
+                    if (Math.random() < 0.04) {
+                        ctxTile.strokeStyle = 'rgba(0,0,0,0.2)';
+                        ctxTile.lineWidth = 1;
+                        ctxTile.beginPath();
+                        const startX = drawX + Math.random() * drawW;
+                        const startY = drawY;
+                        ctxTile.moveTo(startX, startY);
+                        ctxTile.lineTo(startX + (Math.random()-0.5)*20, drawY + drawH);
+                        ctxTile.stroke();
+                    }
                 }
             }
 
-            // Add grime/noise
-            addNoise(ctxTile, width, height, 0.8);
+            // Add general grime/noise on top of tiles
+            addNoise(ctxTile, width, height, 0.6);
             
+            // Grease streaks (vertical drips)
+            ctxTile.globalAlpha = 0.05;
+            ctxTile.fillStyle = '#d97706'; // Yellowish grease
+            for(let i=0; i<15; i++) {
+                 const dx = Math.random() * width;
+                 const dy = Math.random() * height;
+                 const dw = 4 + Math.random() * 12;
+                 const dh = 30 + Math.random() * 100;
+                 ctxTile.fillRect(dx, dy, dw, dh);
+            }
+            ctxTile.globalAlpha = 1.0;
+
             // Kitchen Grime splatters (grease spots)
-            ctxTile.globalAlpha = 0.08;
-            for(let i=0; i<25; i++) {
+            ctxTile.globalAlpha = 0.1;
+            for(let i=0; i<30; i++) {
                 ctxTile.fillStyle = Math.random() > 0.5 ? '#78350f' : '#334155';
                 const gx = Math.random() * width;
                 const gy = Math.random() * height;
@@ -485,7 +549,7 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
 export const GiantProp = React.memo(({ type, x, z, rotation }: { type: string, x: number, z: number, rotation: number }) => {
     if (type === 'toaster') {
         return (
-            <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[5, 5, 5]}>
+            <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[4, 4, 4]}>
                 <mesh castShadow receiveShadow position={[0, 1, 0]}>
                     <boxGeometry args={[2, 1.5, 1]} />
                     <primitive object={materials.metal} />
@@ -499,7 +563,7 @@ export const GiantProp = React.memo(({ type, x, z, rotation }: { type: string, x
     }
     if (type === 'flour') {
         return (
-             <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[4, 4, 4]}>
+             <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[3, 3, 3]}>
                 <mesh castShadow position={[0, 1.5, 0]}>
                     <boxGeometry args={[1.5, 3, 1]} />
                     <meshStandardMaterial color="#fef3c7" roughness={1} />
@@ -513,7 +577,7 @@ export const GiantProp = React.memo(({ type, x, z, rotation }: { type: string, x
     }
     if (type === 'milk') {
         return (
-            <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[4, 4, 4]}>
+            <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[3.5, 3.5, 3.5]}>
                  <mesh castShadow position={[0, 2, 0]}>
                     <boxGeometry args={[1.5, 4, 1.5]} />
                     <meshStandardMaterial color="#3b82f6" roughness={0.8} />
@@ -560,11 +624,12 @@ export const GiantBackgroundProp = React.memo(({ type, x, z, rotation }: { type:
 export const KitchenSegment = React.memo(({ position }: { position: [number, number, number] }) => {
     const textures = useProceduralTextures();
     
+    // Walls at +/- 11 to fit portrait mode nicely (width ~22)
     return (
         <group position={position}>
             {/* Floor - Dark Butcher Block */}
             <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, -0.05, 0]}>
-                <planeGeometry args={[50, 100]} />
+                <planeGeometry args={[22, 100]} />
                 <meshStandardMaterial 
                     map={textures.floor}
                     roughness={0.8}
@@ -572,26 +637,26 @@ export const KitchenSegment = React.memo(({ position }: { position: [number, num
             </mesh>
             
             {/* Left Wall - Tiled */}
-            <mesh rotation={[0, Math.PI / 2, 0]} position={[-25, 25, 0]}>
+            <mesh rotation={[0, Math.PI / 2, 0]} position={[-11, 25, 0]}>
                 <planeGeometry args={[100, 50]} />
                 <meshStandardMaterial map={textures.wall} />
             </mesh>
 
             {/* Right Wall - Tiled */}
-            <mesh rotation={[0, -Math.PI / 2, 0]} position={[25, 25, 0]}>
+            <mesh rotation={[0, -Math.PI / 2, 0]} position={[11, 25, 0]}>
                 <planeGeometry args={[100, 50]} />
                 <meshStandardMaterial map={textures.wall} />
             </mesh>
 
             {/* Ceiling */}
             <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 50, 0]}>
-                <planeGeometry args={[50, 100]} />
+                <planeGeometry args={[22, 100]} />
                 <primitive object={materials.ceiling} />
             </mesh>
             
             {/* Lights on Ceiling to mimic kitchen strip lights */}
             <mesh position={[0, 49, 0]} rotation={[Math.PI/2, 0, 0]}>
-                 <boxGeometry args={[10, 100, 1]} />
+                 <boxGeometry args={[6, 100, 1]} />
                  <meshBasicMaterial color="#fef3c7" />
             </mesh>
         </group>

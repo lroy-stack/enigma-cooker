@@ -60,7 +60,7 @@ const Button = ({ onClick, children, className = "", secondary = false }: any) =
 );
 
 const Panel = ({ children, className = "" }: any) => (
-  <div className={`bg-[#fff8e7] border-4 border-orange-200 rounded-3xl shadow-2xl p-8 ${className}`}>
+  <div className={`bg-[#fff8e7] border-4 border-orange-200 rounded-3xl shadow-2xl p-6 md:p-8 ${className}`}>
     {children}
   </div>
 );
@@ -164,38 +164,38 @@ export default function App() {
 
       {/* --- HUD --- */}
       <div 
-        className={`absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-4 md:p-8 transition-opacity duration-500 ${
+        className={`absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-3 md:p-8 transition-opacity duration-500 ${
           gameState.status === GameStatus.PLAYING ? 'opacity-100' : 'opacity-0'
         }`}
       >
         <div className="flex justify-between items-start">
           <div className="flex flex-col items-start gap-1">
-             <div className="bg-white border-b-4 border-r-4 border-orange-200 rounded-2xl px-6 py-3 shadow-lg flex items-center gap-3 transform -rotate-2">
-                <span className="text-orange-400 text-2xl">★</span>
+             <div className="bg-white border-b-4 border-r-4 border-orange-200 rounded-2xl px-4 py-2 md:px-6 md:py-3 shadow-lg flex items-center gap-2 md:gap-3 transform -rotate-2">
+                <span className="text-orange-400 text-xl md:text-2xl">★</span>
                 <div className="flex flex-col">
-                   <span className="text-xs text-orange-900 font-bold uppercase tracking-widest leading-none">Score</span>
-                   <span className="text-4xl font-black text-orange-600 leading-none tracking-tight w-24 text-center">
+                   <span className="text-[10px] md:text-xs text-orange-900 font-bold uppercase tracking-widest leading-none">Score</span>
+                   <span className="text-3xl md:text-4xl font-black text-orange-600 leading-none tracking-tight w-20 md:w-24 text-center">
                      {Math.floor(displayScore).toString().padStart(4, '0')}
                    </span>
                 </div>
              </div>
           </div>
 
-          <div className="flex flex-col items-end gap-4">
-            <div className="flex items-center gap-2 bg-black/20 backdrop-blur-sm p-2 rounded-full border border-white/20">
+          <div className="flex flex-col items-end gap-2 md:gap-4">
+            <div className="flex items-center gap-1 md:gap-2 bg-black/20 backdrop-blur-sm p-1.5 md:p-2 rounded-full border border-white/20">
                {[0, 1, 2].map((i) => {
                  const item = gameState.ingredients[i];
                  return (
                    <div 
                     key={i} 
                     className={`
-                      w-12 h-12 rounded-full flex items-center justify-center border-2 shadow-sm transition-all duration-300
+                      w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center border-2 shadow-sm transition-all duration-300
                       ${item ? 'bg-white scale-110 border-orange-400' : 'bg-black/30 border-white/10'}
                     `}
                    >
-                     {item === EntityType.ITEM_TOMATO && <IconTomato className="w-8 h-8 text-red-500" />}
-                     {item === EntityType.ITEM_CHEESE && <IconCheese className="w-8 h-8 text-yellow-400" />}
-                     {item === EntityType.ITEM_STEAK && <IconSteak className="w-8 h-8 text-red-900" />}
+                     {item === EntityType.ITEM_TOMATO && <IconTomato className="w-6 h-6 md:w-8 md:h-8 text-red-500" />}
+                     {item === EntityType.ITEM_CHEESE && <IconCheese className="w-6 h-6 md:w-8 md:h-8 text-yellow-400" />}
+                     {item === EntityType.ITEM_STEAK && <IconSteak className="w-6 h-6 md:w-8 md:h-8 text-red-900" />}
                    </div>
                  );
                })}
@@ -203,10 +203,10 @@ export default function App() {
 
             <div className={`transition-all duration-300 flex flex-col items-end ${gameState.furyMode ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-10'}`}>
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-yellow-300 font-bold uppercase text-sm animate-pulse">Chef Fury!</span>
-                  <span className="text-2xl">🔥</span>
+                  <span className="text-yellow-300 font-bold uppercase text-xs md:text-sm animate-pulse">Chef Fury!</span>
+                  <span className="text-xl md:text-2xl">🔥</span>
                 </div>
-                <div className="w-48 h-4 bg-black/50 rounded-full overflow-hidden border-2 border-white/30 relative">
+                <div className="w-32 md:w-48 h-3 md:h-4 bg-black/50 rounded-full overflow-hidden border-2 border-white/30 relative">
                    <div 
                       className="h-full bg-gradient-to-r from-yellow-400 to-red-600"
                       style={{ 
@@ -220,20 +220,20 @@ export default function App() {
         </div>
         
         {/* Powerup Status */}
-        <div className="absolute top-32 right-4 flex flex-col gap-2">
+        <div className="absolute top-24 md:top-32 right-2 md:right-4 flex flex-col gap-2 items-end">
              {gameState.shieldActive && (
-                 <div className="bg-blue-500 text-white px-4 py-2 rounded-full font-bold animate-pulse shadow-lg">🛡️ Shield Active</div>
+                 <div className="bg-blue-500 text-white px-3 py-1 md:px-4 md:py-2 text-sm md:text-base rounded-full font-bold animate-pulse shadow-lg">🛡️ Shield</div>
              )}
              {gameState.magnetActive && (
-                 <div className="bg-red-500 text-white px-4 py-2 rounded-full font-bold animate-pulse shadow-lg">🧲 Magnet Active</div>
+                 <div className="bg-red-500 text-white px-3 py-1 md:px-4 md:py-2 text-sm md:text-base rounded-full font-bold animate-pulse shadow-lg">🧲 Magnet</div>
              )}
         </div>
       </div>
 
       {/* --- MENU SYSTEM --- */}
       {gameState.status === GameStatus.MENU && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
-          <Panel className="w-full max-w-lg mx-4 text-center relative max-h-[90vh] overflow-y-auto">
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4">
+          <Panel className="w-full max-w-lg text-center relative max-h-[90vh] overflow-y-auto">
              <button 
                 onClick={toggleMute} 
                 className="absolute top-4 right-4 p-2 rounded-full hover:bg-orange-100 text-orange-800 transition-colors"
@@ -243,9 +243,9 @@ export default function App() {
 
              <div className="mb-6 mt-2">
                 <div className="inline-block p-4 rounded-full bg-orange-100 mb-4 shadow-inner">
-                   <span className="text-6xl filter drop-shadow-lg">👨‍🍳</span>
+                   <span className="text-5xl md:text-6xl filter drop-shadow-lg">👨‍🍳</span>
                 </div>
-                <h1 className="text-5xl md:text-6xl font-black text-orange-600 tracking-tighter drop-shadow-sm transform -rotate-2">
+                <h1 className="text-4xl md:text-6xl font-black text-orange-600 tracking-tighter drop-shadow-sm transform -rotate-2">
                   CHEF RUNNER
                 </h1>
              </div>
@@ -256,19 +256,19 @@ export default function App() {
                  <div className="bg-orange-50 rounded-2xl p-4 mb-6 border-2 border-orange-100 shadow-sm">
                      <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => setView('PROFILE')}>
-                           <span className="text-gray-500 text-sm font-bold uppercase">Chef:</span>
-                           <span className="text-xl font-black text-orange-800">{session.username}</span>
+                           <span className="text-gray-500 text-xs md:text-sm font-bold uppercase">Chef:</span>
+                           <span className="text-lg md:text-xl font-black text-orange-800 truncate max-w-[100px]">{session.username}</span>
                            <span className="text-xs text-orange-400">⚙️</span>
                         </div>
                         <div className="text-right">
-                            <div className="text-xs text-gray-500 font-bold uppercase">Best</div>
-                            <div className="text-2xl font-black text-orange-600">{session.highScore}</div>
+                            <div className="text-[10px] md:text-xs text-gray-500 font-bold uppercase">Best</div>
+                            <div className="text-xl md:text-2xl font-black text-orange-600">{session.highScore}</div>
                         </div>
                      </div>
                  </div>
 
                  <div className="space-y-3">
-                    <Button onClick={startGame} className="w-full py-4 text-2xl">
+                    <Button onClick={startGame} className="w-full py-4 text-xl md:text-2xl">
                        <span className="mr-2">▶</span> Play Now
                     </Button>
                     <Button onClick={() => setView('LEADERBOARD')} secondary className="w-full">
@@ -336,16 +336,16 @@ export default function App() {
 
       {/* --- GAME OVER --- */}
       {gameState.status === GameStatus.GAME_OVER && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-red-900/80 backdrop-blur-md animate-fade-in">
-           <Panel className="w-full max-w-md mx-4 text-center border-red-200 bg-[#fff5f5] transform scale-100 animate-pop-in">
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-red-900/80 backdrop-blur-md animate-fade-in p-4">
+           <Panel className="w-full max-w-md text-center border-red-200 bg-[#fff5f5] transform scale-100 animate-pop-in">
               <div className="mb-6">
-                <span className="text-6xl block mb-2">💥</span>
-                <h2 className="text-4xl font-black text-red-600 uppercase tracking-wide mb-1">Kitchen Closed!</h2>
+                <span className="text-5xl md:text-6xl block mb-2">💥</span>
+                <h2 className="text-3xl md:text-4xl font-black text-red-600 uppercase tracking-wide mb-1">Kitchen Closed!</h2>
               </div>
 
               <div className="bg-white rounded-xl p-6 mb-8 border-2 border-red-100 shadow-inner">
                  <div className="text-gray-400 text-sm font-bold uppercase tracking-wider mb-1">Final Score</div>
-                 <div className="text-6xl font-black text-gray-800">{Math.floor(gameState.score)}</div>
+                 <div className="text-5xl md:text-6xl font-black text-gray-800">{Math.floor(gameState.score)}</div>
                  {session && Math.floor(gameState.score) >= session.highScore && gameState.score > 0 && (
                     <div className="mt-2 text-orange-500 font-bold animate-pulse">🏆 New High Score!</div>
                  )}
