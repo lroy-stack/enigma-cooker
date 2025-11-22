@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import GameScene from './components/GameScene';
-import { GameStatus, GameState, EntityType, FURY_DURATION } from './types';
+import { GameStatus, GameState, EntityType, FURY_DURATION, UserSession } from './types';
 import { soundManager } from './utils/sound';
+import { storage } from './utils/storage';
 
 // --- Icons & SVG Components ---
 
@@ -37,8 +38,6 @@ const IconSoundOff = ({ className }: { className?: string }) => (
   </svg>
 );
 
-// --- Helper Components ---
-
 const Button = ({ onClick, children, className = "", secondary = false }: any) => (
   <button 
     onClick={onClick}
@@ -66,8 +65,6 @@ const Panel = ({ children, className = "" }: any) => (
   </div>
 );
 
-// --- Main App ---
-
 export default function App() {
   const [gameState, setGameState] = useState<GameState>({
     status: GameStatus.MENU,
@@ -75,11 +72,20 @@ export default function App() {
     speed: 0,
     ingredients: [],
     furyMode: false,
-    furyTimer: 0
+    furyTimer: 0,
+    shieldActive: false,
+    magnetActive: false
   });
 
+  const [session, setSession] = useState<UserSession | null>(null);
   const [muted, setMuted] = useState(false);
   const [displayScore, setDisplayScore] = useState(0);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState("");
+
+  useEffect(() => {
+    setSession(storage.load());
+  }, []);
 
   const toggleMute = () => {
     const newMuted = soundManager.toggleMute();
@@ -93,16 +99,32 @@ export default function App() {
       speed: 10,
       ingredients: [],
       furyMode: false,
-      furyTimer: 0
+      furyTimer: 0,
+      shieldActive: false,
+      magnetActive: false
     });
   };
 
-  // Score Interpolation for smooth UI
+  const handleGameOver = (finalScore: number) => {
+    if (session) {
+      const updatedSession = storage.addScore(session, finalScore);
+      setSession(updatedSession);
+    }
+  };
+
+  const saveName = () => {
+    if (session && tempName.trim()) {
+      const updated = storage.updateName(session, tempName);
+      setSession(updated);
+      setIsEditingName(false);
+    }
+  };
+
+  // Score Interpolation
   useEffect(() => {
     if (gameState.status !== GameStatus.PLAYING) return;
     const target = Math.floor(gameState.score);
     let animationFrameId: number;
-    
     const animate = () => {
       setDisplayScore(prev => {
         if (Math.abs(target - prev) < 1) return target;
@@ -116,23 +138,19 @@ export default function App() {
 
   return (
     <div className="relative w-full h-full bg-[#1a1a1a] overflow-hidden font-fredoka noselect">
-      {/* 3D Scene Layer */}
       <div className="absolute inset-0 z-0">
-        <GameScene gameState={gameState} setGameState={setGameState} />
+        <GameScene gameState={gameState} setGameState={setGameState} onGameOver={handleGameOver} />
       </div>
 
-      {/* Global Overlay Gradient (Vignette) */}
       <div className="absolute inset-0 z-10 pointer-events-none bg-[radial-gradient(circle_at_center,transparent_50%,rgba(0,0,0,0.4)_100%)]" />
 
-      {/* --- HUD (Playing) --- */}
+      {/* --- HUD --- */}
       <div 
         className={`absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-4 md:p-8 transition-opacity duration-500 ${
           gameState.status === GameStatus.PLAYING ? 'opacity-100' : 'opacity-0'
         }`}
       >
-        {/* Top Bar */}
         <div className="flex justify-between items-start">
-          {/* Score Badge */}
           <div className="flex flex-col items-start gap-1">
              <div className="bg-white border-b-4 border-r-4 border-orange-200 rounded-2xl px-6 py-3 shadow-lg flex items-center gap-3 transform -rotate-2">
                 <span className="text-orange-400 text-2xl">★</span>
@@ -145,9 +163,7 @@ export default function App() {
              </div>
           </div>
 
-          {/* Right Side: Ingredients & Fury */}
           <div className="flex flex-col items-end gap-4">
-            {/* Ingredient Slots */}
             <div className="flex items-center gap-2 bg-black/20 backdrop-blur-sm p-2 rounded-full border border-white/20">
                {[0, 1, 2].map((i) => {
                  const item = gameState.ingredients[i];
@@ -159,15 +175,14 @@ export default function App() {
                       ${item ? 'bg-white scale-110 border-orange-400' : 'bg-black/30 border-white/10'}
                     `}
                    >
-                     {item === EntityType.ITEM_TOMATO && <IconTomato className="w-8 h-8 text-red-500 drop-shadow-md" />}
-                     {item === EntityType.ITEM_CHEESE && <IconCheese className="w-8 h-8 text-yellow-400 drop-shadow-md" />}
-                     {item === EntityType.ITEM_STEAK && <IconSteak className="w-8 h-8 text-red-900 drop-shadow-md" />}
+                     {item === EntityType.ITEM_TOMATO && <IconTomato className="w-8 h-8 text-red-500" />}
+                     {item === EntityType.ITEM_CHEESE && <IconCheese className="w-8 h-8 text-yellow-400" />}
+                     {item === EntityType.ITEM_STEAK && <IconSteak className="w-8 h-8 text-red-900" />}
                    </div>
                  );
                })}
             </div>
 
-            {/* Fury Meter */}
             <div className={`transition-all duration-300 flex flex-col items-end ${gameState.furyMode ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-10'}`}>
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-yellow-300 font-bold uppercase text-sm animate-pulse">Chef Fury!</span>
@@ -185,18 +200,22 @@ export default function App() {
             </div>
           </div>
         </div>
-
-        {/* Mobile Controls Hint */}
-        <div className="w-full text-center pb-4 opacity-50 md:hidden animate-pulse">
-          <p className="text-white text-sm font-bold text-shadow">Swipe to Move & Jump</p>
+        
+        {/* Powerup Status */}
+        <div className="absolute top-32 right-4 flex flex-col gap-2">
+             {gameState.shieldActive && (
+                 <div className="bg-blue-500 text-white px-4 py-2 rounded-full font-bold animate-pulse shadow-lg">🛡️ Shield Active</div>
+             )}
+             {gameState.magnetActive && (
+                 <div className="bg-red-500 text-white px-4 py-2 rounded-full font-bold animate-pulse shadow-lg">🧲 Magnet Active</div>
+             )}
         </div>
       </div>
 
-      {/* --- START MENU --- */}
+      {/* --- MENU --- */}
       {gameState.status === GameStatus.MENU && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
-          <Panel className="w-full max-w-md mx-4 text-center relative">
-             {/* Sound Toggle (Corner) */}
+          <Panel className="w-full max-w-lg mx-4 text-center relative max-h-[90vh] overflow-y-auto">
              <button 
                 onClick={toggleMute} 
                 className="absolute top-4 right-4 p-2 rounded-full hover:bg-orange-100 text-orange-800 transition-colors"
@@ -204,30 +223,63 @@ export default function App() {
                 {muted ? <IconSoundOff className="w-6 h-6" /> : <IconSoundOn className="w-6 h-6" />}
              </button>
 
-             {/* Logo Area */}
-             <div className="mb-8 mt-2">
+             <div className="mb-6 mt-2">
                 <div className="inline-block p-4 rounded-full bg-orange-100 mb-4 shadow-inner">
                    <span className="text-6xl filter drop-shadow-lg">👨‍🍳</span>
                 </div>
-                <h1 className="text-6xl md:text-7xl font-black text-orange-600 tracking-tighter drop-shadow-sm transform -rotate-2">
-                  CHEF
-                  <br/>
-                  <span className="text-orange-500">RUNNER</span>
+                <h1 className="text-5xl md:text-6xl font-black text-orange-600 tracking-tighter drop-shadow-sm transform -rotate-2">
+                  CHEF RUNNER
                 </h1>
-                <p className="text-gray-500 font-bold mt-2 text-lg">Endless Kitchen Chaos</p>
              </div>
 
-             {/* Buttons */}
+             {/* Player Profile */}
+             {session && (
+               <div className="bg-orange-50 rounded-2xl p-4 mb-6 border-2 border-orange-100">
+                 <div className="flex items-center justify-between mb-2">
+                    {isEditingName ? (
+                      <div className="flex gap-2 w-full">
+                         <input 
+                           autoFocus
+                           className="flex-1 px-3 py-1 rounded-lg border border-orange-300 outline-none text-orange-900 font-bold"
+                           value={tempName}
+                           onChange={(e) => setTempName(e.target.value)}
+                           placeholder="Enter Name"
+                         />
+                         <button onClick={saveName} className="bg-green-500 text-white px-3 rounded-lg font-bold">OK</button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2" onClick={() => { setTempName(session.username); setIsEditingName(true); }}>
+                         <span className="text-gray-500 text-sm font-bold uppercase">Chef:</span>
+                         <span className="text-xl font-black text-orange-800 border-b-2 border-dotted border-orange-300 hover:border-orange-500 cursor-pointer">{session.username}</span>
+                         <span className="text-xs text-orange-400">✏️</span>
+                      </div>
+                    )}
+                    <div className="text-right">
+                        <div className="text-xs text-gray-500 font-bold uppercase">Best</div>
+                        <div className="text-2xl font-black text-orange-600">{session.highScore}</div>
+                    </div>
+                 </div>
+                 
+                 {/* Mini History */}
+                 {session.history.length > 0 && (
+                   <div className="mt-4 border-t border-orange-200 pt-2">
+                      <div className="text-xs text-left text-gray-400 font-bold uppercase mb-1">Recent Runs</div>
+                      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                         {session.history.slice(0, 5).map((rec, i) => (
+                           <div key={i} className="flex-shrink-0 bg-white px-3 py-1 rounded-lg border border-orange-100 text-sm font-bold text-gray-600">
+                              {rec.score}
+                           </div>
+                         ))}
+                      </div>
+                   </div>
+                 )}
+               </div>
+             )}
+
              <div className="space-y-4">
-                <Button onClick={startGame} className="w-full py-5 text-2xl">
-                   <span className="mr-2">▶</span> Start Cooking
+                <Button onClick={startGame} className="w-full py-4 text-2xl">
+                   <span className="mr-2">▶</span> Play Now
                 </Button>
-                
-                <div className="flex justify-center gap-4 mt-6 text-orange-900/40 font-bold text-sm">
-                  <span className="flex items-center gap-1">⬅️ Move</span>
-                  <span className="flex items-center gap-1">⬆️ Jump</span>
-                  <span className="flex items-center gap-1">➡️ Move</span>
-                </div>
              </div>
           </Panel>
         </div>
@@ -240,22 +292,27 @@ export default function App() {
               <div className="mb-6">
                 <span className="text-6xl block mb-2">💥</span>
                 <h2 className="text-4xl font-black text-red-600 uppercase tracking-wide mb-1">Kitchen Closed!</h2>
-                <p className="text-red-400 font-semibold">Too many accidents...</p>
               </div>
 
               <div className="bg-white rounded-xl p-6 mb-8 border-2 border-red-100 shadow-inner">
                  <div className="text-gray-400 text-sm font-bold uppercase tracking-wider mb-1">Final Score</div>
                  <div className="text-6xl font-black text-gray-800">{Math.floor(gameState.score)}</div>
+                 {session && Math.floor(gameState.score) >= session.highScore && gameState.score > 0 && (
+                    <div className="mt-2 text-orange-500 font-bold animate-pulse">🏆 New High Score!</div>
+                 )}
               </div>
 
               <Button onClick={startGame} className="w-full">
                  Try Again ↺
               </Button>
+              
+              <button onClick={() => setGameState(prev => ({...prev, status: GameStatus.MENU}))} className="mt-4 text-gray-500 hover:text-gray-800 font-bold underline">
+                  Back to Menu
+              </button>
            </Panel>
         </div>
       )}
       
-      {/* CSS Animations for Keyframes */}
       <style>{`
         @keyframes shrink {
           from { width: 100%; }
@@ -271,7 +328,7 @@ export default function App() {
         }
         .animate-fade-in { animation: fade-in 0.3s ease-out; }
         .animate-pop-in { animation: pop-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-        .text-shadow { text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
       `}</style>
     </div>
   );

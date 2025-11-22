@@ -14,7 +14,7 @@ export enum EntityType {
   // Obstacles
   OBSTACLE_KNIFE = 'OBSTACLE_KNIFE',
   OBSTACLE_POT = 'OBSTACLE_POT',
-  OBSTACLE_BURNER = 'OBSTACLE_BURNER', // New dynamic obstacle
+  OBSTACLE_BURNER = 'OBSTACLE_BURNER',
   
   // Items
   ITEM_TOMATO = 'ITEM_TOMATO',
@@ -34,7 +34,6 @@ export interface GameState {
   ingredients: EntityType[];
   furyMode: boolean;
   furyTimer: number;
-  // New visual states
   shieldActive: boolean;
   magnetActive: boolean;
 }
@@ -45,7 +44,6 @@ export interface GameEntity {
   x: number;
   z: number;
   active: boolean;
-  rotationSpeed?: number; // For dynamic obstacles
 }
 
 export interface Particle {
@@ -57,12 +55,23 @@ export interface Particle {
   vy: number;
   vz: number;
   life: number;
-  color: string;
+  color: string; // Keep for reference, but InstancedMesh might use a single color or attribute
+}
+
+export interface ScoreRecord {
+  date: number;
+  score: number;
+}
+
+export interface UserSession {
+  username: string;
+  highScore: number;
+  history: ScoreRecord[];
 }
 
 export const FURY_DURATION = 10; // seconds
 export const POWERUP_DURATION = 8; // seconds
-export const BASE_SPEED = 12; // Slightly faster base
+export const BASE_SPEED = 12;
 export const MAX_SPEED = 30;
 export const FURY_SPEED_MULTIPLIER = 1.5;
 export const JUMP_FORCE = 10;

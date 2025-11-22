@@ -1,18 +1,16 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useLayoutEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { EntityType, Particle } from '../types';
 
-// --- Materials ---
+// --- Materials (Reuse ensures low draw calls) ---
 const materials = {
     metal: new THREE.MeshStandardMaterial({ color: "#9ca3af", metalness: 0.9, roughness: 0.2 }),
     wood: new THREE.MeshStandardMaterial({ color: "#78350f", roughness: 0.8 }),
     tomato: new THREE.MeshStandardMaterial({ color: "#ef4444", roughness: 0.2, emissive: "#7f1d1d", emissiveIntensity: 0.2 }),
     cheese: new THREE.MeshStandardMaterial({ color: "#fbbf24", roughness: 0.5 }),
     steak: new THREE.MeshStandardMaterial({ color: "#7f1d1d", roughness: 0.6 }),
-    whitePlastic: new THREE.MeshStandardMaterial({ color: "#f3f4f6", roughness: 0.3 }),
     glowBlue: new THREE.MeshStandardMaterial({ color: "#3b82f6", emissive: "#3b82f6", emissiveIntensity: 2, toneMapped: false }),
-    glowPurple: new THREE.MeshStandardMaterial({ color: "#a855f7", emissive: "#a855f7", emissiveIntensity: 2, toneMapped: false }),
     glowOrange: new THREE.MeshStandardMaterial({ color: "#f97316", emissive: "#f97316", emissiveIntensity: 2, toneMapped: false })
 };
 
@@ -29,7 +27,7 @@ export const ChefModel = ({ isFury, isJumping, shieldActive }: { isFury: boolean
     const time = state.clock.getElapsedTime();
     const speed = isFury ? 25 : 18;
     
-    // Running
+    // Running Animation
     if (leftLegRef.current && rightLegRef.current) {
       if (isJumping) {
          leftLegRef.current.rotation.x = -0.8;
@@ -48,7 +46,7 @@ export const ChefModel = ({ isFury, isJumping, shieldActive }: { isFury: boolean
 
     // Shield Animation
     if (shieldRef.current) {
-        shieldRef.current.rotation.y += delta => 2 * delta;
+        shieldRef.current.rotation.y += 0.05;
         shieldRef.current.rotation.z = Math.sin(time * 2) * 0.2;
         const scale = 1 + Math.sin(time * 5) * 0.05;
         shieldRef.current.scale.set(scale, scale, scale);
@@ -65,12 +63,12 @@ export const ChefModel = ({ isFury, isJumping, shieldActive }: { isFury: boolean
         </mesh>
       )}
 
-      {/* Body (Apron) */}
+      {/* Body */}
       <mesh position={[0, 0.75, 0]} castShadow receiveShadow>
         <cylinderGeometry args={[0.35, 0.4, 0.8, 16]} />
         <meshStandardMaterial color="white" />
       </mesh>
-      {/* Apron detail */}
+      {/* Apron */}
       <mesh position={[0, 0.6, 0.25]}>
          <boxGeometry args={[0.5, 0.6, 0.1]} />
          <meshStandardMaterial color={isFury ? "#ef4444" : "#f97316"} emissive={isFury ? "#ef4444" : "black"} emissiveIntensity={isFury ? 0.5 : 0} />
@@ -128,13 +126,11 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
   useFrame((state) => {
     if (!meshRef.current) return;
     
-    // Idle animations
     if (type === EntityType.OBSTACLE_KNIFE) {
-       meshRef.current.rotation.z = Math.sin(state.clock.getElapsedTime() * 5) * 0.1; // Swing
+       meshRef.current.rotation.z = Math.sin(state.clock.getElapsedTime() * 5) * 0.1;
     } else if (type === EntityType.OBSTACLE_BURNER) {
-       // Flicker handled by material or particles usually, but static here for perf
+       // Static
     } else {
-       // Items and powerups rotate
        meshRef.current.rotation.y += 0.03;
        meshRef.current.position.y = Math.sin(state.clock.getElapsedTime() * 3) * 0.1;
     }
@@ -144,12 +140,10 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
   if (type === EntityType.OBSTACLE_KNIFE) {
     return (
       <group ref={meshRef} position={[0, 1.5, 0]}>
-        {/* Blade */}
         <mesh castShadow position={[0, 0.5, 0]}>
            <boxGeometry args={[0.1, 2.5, 0.8]} />
            <primitive object={materials.metal} />
         </mesh>
-        {/* Handle */}
         <mesh position={[0, 1.8, 0]}>
             <cylinderGeometry args={[0.15, 0.15, 0.8]} rotation={[Math.PI/2,0,0]} />
             <meshStandardMaterial color="#1f2937" />
@@ -164,12 +158,10 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
            <cylinderGeometry args={[0.7, 0.6, 1.2, 16]} />
            <meshStandardMaterial color="#374151" metalness={0.6} roughness={0.4} />
         </mesh>
-        {/* Soup */}
          <mesh position={[0, 0.5, 0]}>
            <cylinderGeometry args={[0.6, 0, 0.1, 16]} />
            <meshStandardMaterial color="#16a34a" />
         </mesh>
-        {/* Handle */}
         <mesh position={[0.7, 0.3, 0]} rotation={[0,0,Math.PI/2]}>
             <cylinderGeometry args={[0.1, 0.1, 0.4]} />
             <primitive object={materials.metal} />
@@ -184,7 +176,6 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
                   <cylinderGeometry args={[1, 1.1, 0.2, 16]} />
                   <meshStandardMaterial color="#111" />
               </mesh>
-              {/* Fire */}
               <mesh position={[0, 0.3, 0]}>
                    <coneGeometry args={[0.8, 1, 8]} />
                    <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={2} transparent opacity={0.7} />
@@ -202,14 +193,11 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
             <sphereGeometry args={[0.35, 16, 16]} />
             <primitive object={materials.tomato} />
         </mesh>
-        {/* Leaves constructed from standard primitives */}
         <group position={[0, 0.32, 0]}>
-             {/* Star/Calyx shape */}
              <mesh>
                  <cylinderGeometry args={[0.01, 0.25, 0.05, 5]} />
                  <meshStandardMaterial color="#166534" />
              </mesh>
-             {/* Stem */}
              <mesh position={[0, 0.1, 0]}>
                  <cylinderGeometry args={[0.03, 0.03, 0.2, 6]} />
                  <meshStandardMaterial color="#166534" />
@@ -223,7 +211,6 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
       <mesh ref={meshRef} position={[0,0.5,0]} castShadow rotation={[0.5, 0.5, 0]}>
         <boxGeometry args={[0.5, 0.4, 0.5]} />
         <primitive object={materials.cheese} />
-        {/* Holes */}
         <mesh position={[0.1, 0.1, 0.26]}>
              <sphereGeometry args={[0.08]} />
              <meshStandardMaterial color="#d97706" />
@@ -248,7 +235,6 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
   if (type === EntityType.POWERUP_MAGNET) {
       return (
         <group ref={meshRef} position={[0, 0.8, 0]}>
-            {/* U Shape */}
             <mesh castShadow>
                 <torusGeometry args={[0.4, 0.1, 8, 16, Math.PI]} />
                 <primitive object={materials.metal} />
@@ -299,8 +285,7 @@ export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
 
 // --- Background Environment ---
 
-export const GiantProp = ({ type, x, z, rotation }: { type: string, x: number, z: number, rotation: number }) => {
-    // Giant kitchen items placed outside the play area
+export const GiantProp = React.memo(({ type, x, z, rotation }: { type: string, x: number, z: number, rotation: number }) => {
     if (type === 'toaster') {
         return (
             <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[5, 5, 5]}>
@@ -324,7 +309,7 @@ export const GiantProp = ({ type, x, z, rotation }: { type: string, x: number, z
                 </mesh>
                 <mesh position={[0, 2, 1.01]}>
                     <planeGeometry args={[1, 1]} />
-                    <meshBasicMaterial color="#d97706" /> {/* Label */}
+                    <meshBasicMaterial color="#d97706" />
                 </mesh>
              </group>
         )
@@ -344,32 +329,45 @@ export const GiantProp = ({ type, x, z, rotation }: { type: string, x: number, z
         )
     }
     return null;
-};
+});
 
-export const KitchenCountertop = () => {
-    // Seamless repeating floor logic is handled in Scene, this is just the material look
-    // We use a big plane with a wood texture look
+export const KitchenCountertop = React.memo(() => {
     return (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, -100]} receiveShadow>
             <planeGeometry args={[40, 400]} />
             <primitive object={materials.wood} />
         </mesh>
     );
-}
+});
 
-// --- Visual Effects ---
+// --- Visual Effects (Optimized) ---
 
-export const ParticleSystem = ({ particles }: { particles: Particle[] }) => {
-    // Using simple meshes for particles. For 1000+ particles, use InstancedMesh. 
-    // For <100, mapping is fine.
+export const InstancedParticles = ({ particlesRef }: { particlesRef: React.MutableRefObject<Particle[]> }) => {
+    const meshRef = useRef<THREE.InstancedMesh>(null);
+    const dummy = useRef(new THREE.Object3D());
+
+    useFrame(() => {
+        if (!meshRef.current || !particlesRef.current) return;
+        
+        const particles = particlesRef.current;
+        const count = particles.length;
+        meshRef.current.count = count;
+        
+        for (let i = 0; i < count; i++) {
+            const p = particles[i];
+            dummy.current.position.set(p.x, p.y, p.z);
+            dummy.current.scale.setScalar(Math.max(0, p.life));
+            dummy.current.updateMatrix();
+            meshRef.current.setMatrixAt(i, dummy.current.matrix);
+            // Color could be handled by InstanceColor, but for simplicity uniform color or varied by scale is used here
+        }
+        meshRef.current.instanceMatrix.needsUpdate = true;
+    });
+
     return (
-        <group>
-            {particles.map(p => (
-                <mesh key={p.id} position={[p.x, p.y, p.z]}>
-                    <boxGeometry args={[0.15, 0.15, 0.15]} />
-                    <meshBasicMaterial color={p.color} transparent opacity={p.life} />
-                </mesh>
-            ))}
-        </group>
+        <instancedMesh ref={meshRef} args={[undefined, undefined, 200]}>
+            <boxGeometry args={[0.15, 0.15, 0.15]} />
+            <meshBasicMaterial color="white" transparent opacity={0.8} />
+        </instancedMesh>
     );
-}
+};
