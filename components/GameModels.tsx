@@ -8,8 +8,22 @@ const useProceduralTextures = () => {
     return useMemo(() => {
         const width = 512;
         const height = 512;
+
+        // Helper to add noise/grain
+        const addNoise = (ctx: CanvasRenderingContext2D, w: number, h: number, amount: number) => {
+             ctx.globalCompositeOperation = 'overlay';
+             for(let i=0; i< 6000; i++) {
+                 ctx.fillStyle = Math.random() > 0.5 ? '#000' : '#fff';
+                 ctx.globalAlpha = 0.03 * amount;
+                 const x = Math.random() * w;
+                 const y = Math.random() * h;
+                 ctx.fillRect(x, y, 2, 2);
+             }
+             ctx.globalCompositeOperation = 'source-over';
+             ctx.globalAlpha = 1.0;
+        };
         
-        // 1. Wood Texture (Butcher Block Floor) - High Contrast
+        // 1. Wood Texture (Butcher Block Floor) - High Fidelity
         const canvasWood = document.createElement('canvas');
         canvasWood.width = width;
         canvasWood.height = height;
@@ -19,55 +33,126 @@ const useProceduralTextures = () => {
             ctxWood.fillStyle = '#78350f'; // Amber-900
             ctxWood.fillRect(0, 0, width, height);
             
-            // Planks
             const plankWidth = 64;
             for (let i = 0; i < width / plankWidth; i++) {
-                // Slight variation per plank
-                ctxWood.fillStyle = i % 2 === 0 ? '#92400e' : '#78350f';
+                // Plank color variation
+                const hue = 30 + Math.random() * 5;
+                const sat = 70 + Math.random() * 15;
+                const lig = 20 + Math.random() * 10;
+                ctxWood.fillStyle = `hsl(${hue}, ${sat}%, ${lig}%)`;
                 ctxWood.fillRect(i * plankWidth, 0, plankWidth, height);
                 
                 // Wood grain lines
-                ctxWood.strokeStyle = '#451a03'; // Darker
+                ctxWood.strokeStyle = '#451a03';
                 ctxWood.globalAlpha = 0.2;
                 ctxWood.beginPath();
-                for(let j=0; j<20; j++) {
-                    const x = i * plankWidth + Math.random() * plankWidth;
-                    ctxWood.moveTo(x, 0);
-                    ctxWood.lineTo(x, height);
+                for(let j=0; j<30; j++) {
+                    const xStart = i * plankWidth + Math.random() * plankWidth;
+                    // Wavy grain
+                    ctxWood.moveTo(xStart, 0);
+                    ctxWood.bezierCurveTo(
+                        xStart + (Math.random()-0.5)*20, height/3,
+                        xStart + (Math.random()-0.5)*20, 2*height/3,
+                        xStart + (Math.random()-0.5)*10, height
+                    );
                 }
                 ctxWood.stroke();
+                
+                // Knots
+                for(let k=0; k<2; k++) {
+                    if(Math.random() > 0.7) continue;
+                    const kx = i * plankWidth + Math.random() * plankWidth;
+                    const ky = Math.random() * height;
+                    const kr = 3 + Math.random() * 4;
+                    ctxWood.fillStyle = '#3f1d08';
+                    ctxWood.beginPath();
+                    ctxWood.ellipse(kx, ky, kr, kr*2.5, Math.random(), 0, Math.PI*2);
+                    ctxWood.fill();
+                }
+
                 ctxWood.globalAlpha = 1.0;
                 
                 // Gap
-                ctxWood.fillStyle = '#271c19';
+                ctxWood.fillStyle = '#1a0f0a';
                 ctxWood.fillRect((i+1)*plankWidth - 2, 0, 2, height);
             }
+
+            // Add General Noise/Dirt
+            addNoise(ctxWood, width, height, 1.5);
+            
+            // Scratches & Wear
+            ctxWood.strokeStyle = '#9a6340'; 
+            ctxWood.globalAlpha = 0.15;
+            ctxWood.beginPath();
+            for(let s=0; s<60; s++) {
+                const sx = Math.random() * width;
+                const sy = Math.random() * height;
+                ctxWood.moveTo(sx, sy);
+                ctxWood.lineTo(sx + (Math.random()-0.5)*30, sy + (Math.random()-0.5)*30);
+            }
+            ctxWood.stroke();
+            ctxWood.globalAlpha = 1.0;
         }
         const texWood = new THREE.CanvasTexture(canvasWood);
         texWood.wrapS = THREE.RepeatWrapping;
         texWood.wrapT = THREE.RepeatWrapping;
         texWood.repeat.set(5, 10);
         
-        // 2. Tile Texture (Walls)
+        // 2. Tile Texture (Walls) - Detailed
         const canvasTile = document.createElement('canvas');
         canvasTile.width = width;
         canvasTile.height = height;
         const ctxTile = canvasTile.getContext('2d');
         if (ctxTile) {
-            ctxTile.fillStyle = '#f8fafc'; // Slate-50
+            ctxTile.fillStyle = '#cbd5e1'; // Grout color
             ctxTile.fillRect(0, 0, width, height);
             
-            ctxTile.strokeStyle = '#cbd5e1'; // Grout
-            ctxTile.lineWidth = 4;
-            const tileSize = 128;
-            
+            const tileSizeW = 128;
+            const tileSizeH = 64;
+            const gap = 4;
+
             // Subway tile pattern
-            for(let y=0; y<height/64; y++) {
-                const offset = y % 2 === 0 ? 0 : -64;
-                for(let x=0; x<(width/128)+1; x++) {
-                    ctxTile.strokeRect(x*128 + offset, y*64, 128, 64);
+            for(let y=0; y<height/tileSizeH; y++) {
+                const offset = y % 2 === 0 ? 0 : -tileSizeW/2;
+                for(let x=0; x<(width/tileSizeW)+1; x++) {
+                    // Variation in tile white/off-white
+                    const val = 240 + Math.random() * 15;
+                    ctxTile.fillStyle = `rgb(${val}, ${val}, ${val})`;
+                    
+                    const drawX = x*tileSizeW + offset + gap/2;
+                    const drawY = y*tileSizeH + gap/2;
+                    const drawW = tileSizeW - gap;
+                    const drawH = tileSizeH - gap;
+                    
+                    ctxTile.fillRect(drawX, drawY, drawW, drawH);
+
+                    // Subtle bevel/highlight top-left
+                    ctxTile.fillStyle = 'rgba(255,255,255,0.6)';
+                    ctxTile.fillRect(drawX, drawY, drawW, 3);
+                    ctxTile.fillRect(drawX, drawY, 3, drawH);
+                    
+                    // Subtle shadow bottom-right
+                    ctxTile.fillStyle = 'rgba(0,0,0,0.1)';
+                    ctxTile.fillRect(drawX, drawY + drawH - 3, drawW, 3);
+                    ctxTile.fillRect(drawX + drawW - 3, drawY, 3, drawH);
                 }
             }
+
+            // Add grime/noise
+            addNoise(ctxTile, width, height, 0.8);
+            
+            // Kitchen Grime splatters (grease spots)
+            ctxTile.globalAlpha = 0.08;
+            for(let i=0; i<25; i++) {
+                ctxTile.fillStyle = Math.random() > 0.5 ? '#78350f' : '#334155';
+                const gx = Math.random() * width;
+                const gy = Math.random() * height;
+                const gr = 2 + Math.random() * 8;
+                ctxTile.beginPath();
+                ctxTile.arc(gx, gy, gr, 0, Math.PI*2);
+                ctxTile.fill();
+            }
+            ctxTile.globalAlpha = 1.0;
         }
         const texTile = new THREE.CanvasTexture(canvasTile);
         texTile.wrapS = THREE.RepeatWrapping;
@@ -530,10 +615,6 @@ export const InstancedParticles = ({ particlesRef }: { particlesRef: React.Mutab
             dummy.current.scale.setScalar(Math.max(0, p.life));
             dummy.current.updateMatrix();
             meshRef.current.setMatrixAt(i, dummy.current.matrix);
-            
-            // Set color based on particle type/def (simplified here to white/gray/gold)
-            // In a full implementation we would use setColorAt, but requires a color buffer.
-            // For now, basic particles.
         }
         meshRef.current.instanceMatrix.needsUpdate = true;
     });
