@@ -100,4 +100,4 @@ export const JUMP_FORCE = 10;
 export const GRAVITY = 25;
 export const BASE_SPEED = 15;
 export const MAX_SPEED = 40;
-export const FURY_SPEED_MULTIPLIER = 1.5;
+export const FURY_SPEED_MULTIPLIER = 2.0;

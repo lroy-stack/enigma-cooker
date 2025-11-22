@@ -168,6 +168,16 @@ export default function App() {
 
       <div className="absolute inset-0 z-10 pointer-events-none bg-[radial-gradient(circle_at_center,transparent_50%,rgba(0,0,0,0.4)_100%)]" />
 
+      {/* --- FURY OVERLAY --- */}
+      <div 
+        className={`absolute inset-0 z-15 pointer-events-none transition-opacity duration-300 mix-blend-overlay ${
+            gameState.furyMode ? 'opacity-100' : 'opacity-0'
+        }`}
+      >
+        <div className="w-full h-full bg-gradient-to-b from-orange-500/40 via-transparent to-red-600/50 animate-pulse" />
+        <div className="absolute inset-0 shadow-[inset_0_0_100px_rgba(220,38,38,0.8)]" />
+      </div>
+
       {/* --- HUD --- */}
       <div 
         className={`absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-3 md:p-8 transition-opacity duration-500 ${

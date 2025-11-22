@@ -540,16 +540,26 @@ const GameLogic = ({ gameState, setGameState, onGameOver }: GameSceneProps) => {
                 soundManager.playCollect();
                 s.score += 50;
                 spawnParticles(entity.x, 0.5, entity.z, "gold", 5);
+                
+                // INGREDIENT LOGIC UPDATE: Fury Mode triggers only on Tomato + Cheese + Steak combo
                 const newIngredients = [...s.ingredients, entity.type];
                 if (newIngredients.length > 3) newIngredients.shift();
                 s.ingredients = newIngredients;
-                if (!s.furyTimer && newIngredients.length === 3) {
-                    const unique = new Set(newIngredients);
-                    if (unique.size >= 2) { 
-                        s.furyTimer = FURY_DURATION;
-                        s.ingredients = [];
-                        soundManager.playFuryStart();
-                        setGameState(prev => ({ ...prev, furyMode: true }));
+
+                const hasTomato = newIngredients.includes(EntityType.ITEM_TOMATO);
+                const hasCheese = newIngredients.includes(EntityType.ITEM_CHEESE);
+                const hasSteak = newIngredients.includes(EntityType.ITEM_STEAK);
+
+                if (!s.furyTimer && newIngredients.length === 3 && hasTomato && hasCheese && hasSteak) {
+                    s.furyTimer = FURY_DURATION;
+                    s.ingredients = []; // Clear ingredients on activation
+                    soundManager.playFuryStart();
+                    setGameState(prev => ({ ...prev, furyMode: true }));
+                    
+                    // Big visual feedback for Fury
+                    if (playerRef.current) {
+                        spawnParticles(playerRef.current.position.x, 1, s.playerZ, "#ef4444", 50); // Red explosion
+                        spawnParticles(playerRef.current.position.x, 1, s.playerZ, "#fbbf24", 30); // Orange sparks
                     }
                 }
                 setGameState(prev => ({ ...prev, score: s.score, ingredients: s.ingredients }));
