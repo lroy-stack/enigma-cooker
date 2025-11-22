@@ -11,11 +11,20 @@ export enum Lane {
 }
 
 export enum EntityType {
+  // Obstacles
   OBSTACLE_KNIFE = 'OBSTACLE_KNIFE',
   OBSTACLE_POT = 'OBSTACLE_POT',
+  OBSTACLE_BURNER = 'OBSTACLE_BURNER', // New dynamic obstacle
+  
+  // Items
   ITEM_TOMATO = 'ITEM_TOMATO',
   ITEM_CHEESE = 'ITEM_CHEESE',
-  ITEM_STEAK = 'ITEM_STEAK'
+  ITEM_STEAK = 'ITEM_STEAK',
+  
+  // Powerups
+  POWERUP_MAGNET = 'POWERUP_MAGNET',
+  POWERUP_SHIELD = 'POWERUP_SHIELD',
+  POWERUP_TURBO = 'POWERUP_TURBO'
 }
 
 export interface GameState {
@@ -25,6 +34,9 @@ export interface GameState {
   ingredients: EntityType[];
   furyMode: boolean;
   furyTimer: number;
+  // New visual states
+  shieldActive: boolean;
+  magnetActive: boolean;
 }
 
 export interface GameEntity {
@@ -33,10 +45,25 @@ export interface GameEntity {
   x: number;
   z: number;
   active: boolean;
+  rotationSpeed?: number; // For dynamic obstacles
+}
+
+export interface Particle {
+  id: number;
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  life: number;
+  color: string;
 }
 
 export const FURY_DURATION = 10; // seconds
-export const BASE_SPEED = 10;
-export const FURY_SPEED_MULTIPLIER = 2.0;
-export const JUMP_FORCE = 8;
-export const GRAVITY = 20;
+export const POWERUP_DURATION = 8; // seconds
+export const BASE_SPEED = 12; // Slightly faster base
+export const MAX_SPEED = 30;
+export const FURY_SPEED_MULTIPLIER = 1.5;
+export const JUMP_FORCE = 10;
+export const GRAVITY = 25;

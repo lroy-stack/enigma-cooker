@@ -1,9 +1,9 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera, Environment, Text, Stars } from '@react-three/drei';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { PerspectiveCamera, Environment, Stars, SpotLight } from '@react-three/drei';
 import * as THREE from 'three';
-import { GameStatus, Lane, EntityType, GameEntity, GameState, FURY_DURATION, BASE_SPEED, FURY_SPEED_MULTIPLIER, JUMP_FORCE, GRAVITY } from '../types';
-import { ChefModel, IngredientModel, ObstacleModel } from './GameModels';
+import { GameStatus, Lane, EntityType, GameEntity, GameState, Particle, FURY_DURATION, POWERUP_DURATION, BASE_SPEED, MAX_SPEED, FURY_SPEED_MULTIPLIER, JUMP_FORCE, GRAVITY } from '../types';
+import { ChefModel, EntityModel, KitchenCountertop, GiantProp, ParticleSystem } from './GameModels';
 import { soundManager } from '../utils/sound';
 
 interface GameSceneProps {
@@ -11,28 +11,74 @@ interface GameSceneProps {
   setGameState: React.Dispatch<React.SetStateAction<GameState>>;
 }
 
-const SPAWN_DISTANCE = 60;
+const SPAWN_DISTANCE = 80;
 const DESPAWN_DISTANCE = 10;
-const LANE_WIDTH = 2;
 const COLLISION_THRESHOLD = 0.8;
+const LANE_WIDTH = 2.2; // Slightly wider for giant feel
 
-const Entity = React.memo(({ entity }: { entity: GameEntity }) => {
-  return (
-    <group position={[entity.x, 0, entity.z]}>
-      {entity.type.startsWith('ITEM') ? (
-        <IngredientModel type={entity.type} />
-      ) : (
-        <ObstacleModel type={entity.type} />
-      )}
-    </group>
-  );
-});
+// Spawning Patterns
+type Pattern = (z: number) => GameEntity[];
+
+const createSingleLinePattern: Pattern = (z) => {
+    const lane = [Lane.LEFT, Lane.MIDDLE, Lane.RIGHT][Math.floor(Math.random() * 3)];
+    const entities: GameEntity[] = [];
+    for (let i = 0; i < 5; i++) {
+        entities.push({
+            id: Math.random().toString(),
+            type: EntityType.ITEM_TOMATO,
+            x: lane,
+            z: z - (i * 2),
+            active: true
+        });
+    }
+    return entities;
+};
+
+const createWallPattern: Pattern = (z) => {
+    // Two obstacles, one free lane
+    const lanes = [Lane.LEFT, Lane.MIDDLE, Lane.RIGHT];
+    const freeLaneIndex = Math.floor(Math.random() * 3);
+    const entities: GameEntity[] = [];
+    
+    lanes.forEach((lane, idx) => {
+        if (idx !== freeLaneIndex) {
+            entities.push({
+                id: Math.random().toString(),
+                type: Math.random() > 0.5 ? EntityType.OBSTACLE_POT : EntityType.OBSTACLE_KNIFE,
+                x: lane,
+                z: z,
+                active: true
+            });
+        } else {
+            // Reward in the gap
+             entities.push({
+                id: Math.random().toString(),
+                type: EntityType.ITEM_CHEESE,
+                x: lane,
+                z: z,
+                active: true
+            });
+        }
+    });
+    return entities;
+};
+
+const createPowerupPattern: Pattern = (z) => {
+    const lane = [Lane.LEFT, Lane.MIDDLE, Lane.RIGHT][Math.floor(Math.random() * 3)];
+    const powerups = [EntityType.POWERUP_MAGNET, EntityType.POWERUP_SHIELD, EntityType.POWERUP_TURBO];
+    return [{
+        id: Math.random().toString(),
+        type: powerups[Math.floor(Math.random() * powerups.length)],
+        x: lane,
+        z: z,
+        active: true
+    }];
+};
 
 const GameLogic = ({ gameState, setGameState }: GameSceneProps) => {
   const playerRef = useRef<THREE.Group>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera>(null);
   
-  // Refs for mutable game state in the loop to avoid re-renders
   const stateRef = useRef({
     status: gameState.status,
     playerLane: Lane.MIDDLE,
@@ -42,16 +88,40 @@ const GameLogic = ({ gameState, setGameState }: GameSceneProps) => {
     isJumping: false,
     speed: BASE_SPEED,
     furyTimer: 0,
+    powerupTimer: 0,
+    activePowerup: null as EntityType | null,
     entities: [] as GameEntity[],
+    particles: [] as Particle[],
     lastSpawnZ: -10,
     score: 0,
     ingredients: [] as EntityType[],
+    shakeIntensity: 0,
   });
 
-  // Sync React state changes to ref (for restart/UI updates)
+  const [renderEntities, setRenderEntities] = useState<GameEntity[]>([]);
+  const [renderParticles, setRenderParticles] = useState<Particle[]>([]);
+  
+  // Environment Props (Static list for now, could be dynamic)
+  const sideProps = useMemo(() => {
+      const props = [];
+      for(let i=0; i<20; i++) {
+          const z = -i * 30;
+          const isLeft = i % 2 === 0;
+          const type = ['toaster', 'flour', 'milk'][Math.floor(Math.random() * 3)];
+          props.push({ 
+              id: i, 
+              type, 
+              x: isLeft ? -15 : 15, 
+              z: z,
+              rotation: (Math.random() * 0.5) - 0.2
+          });
+      }
+      return props;
+  }, []);
+
+  // Refs sync
   useEffect(() => {
     if (gameState.status === GameStatus.MENU) {
-      // Reset
       stateRef.current = {
         ...stateRef.current,
         status: GameStatus.MENU,
@@ -62,14 +132,16 @@ const GameLogic = ({ gameState, setGameState }: GameSceneProps) => {
         isJumping: false,
         speed: BASE_SPEED,
         furyTimer: 0,
+        powerupTimer: 0,
+        activePowerup: null,
         entities: [],
+        particles: [],
         lastSpawnZ: -10,
         score: 0,
         ingredients: [],
+        shakeIntensity: 0,
       };
-      if (playerRef.current) {
-        playerRef.current.position.set(0,0,0);
-      }
+      if (playerRef.current) playerRef.current.position.set(0,0,0);
     } else if (gameState.status === GameStatus.PLAYING) {
       stateRef.current.status = GameStatus.PLAYING;
     }
@@ -93,38 +165,28 @@ const GameLogic = ({ gameState, setGameState }: GameSceneProps) => {
       }
     };
 
-    // Touch controls (basic swipe)
     let touchStartX = 0;
     let touchStartY = 0;
-    
     const handleTouchStart = (e: TouchEvent) => {
       touchStartX = e.changedTouches[0].screenX;
       touchStartY = e.changedTouches[0].screenY;
     };
-    
     const handleTouchEnd = (e: TouchEvent) => {
       if (stateRef.current.status !== GameStatus.PLAYING) return;
-      const touchEndX = e.changedTouches[0].screenX;
-      const touchEndY = e.changedTouches[0].screenY;
-      const dx = touchEndX - touchStartX;
-      const dy = touchEndY - touchStartY;
-
+      const dx = e.changedTouches[0].screenX - touchStartX;
+      const dy = e.changedTouches[0].screenY - touchStartY;
       if (Math.abs(dx) > Math.abs(dy)) {
-        // Horizontal swipe
-        if (dx > 50) { // Right
+        if (dx > 40) { // Right
            if (stateRef.current.playerLane === Lane.LEFT) stateRef.current.playerLane = Lane.MIDDLE;
            else if (stateRef.current.playerLane === Lane.MIDDLE) stateRef.current.playerLane = Lane.RIGHT;
-        } else if (dx < -50) { // Left
+        } else if (dx < -40) { // Left
            if (stateRef.current.playerLane === Lane.RIGHT) stateRef.current.playerLane = Lane.MIDDLE;
            else if (stateRef.current.playerLane === Lane.MIDDLE) stateRef.current.playerLane = Lane.LEFT;
         }
-      } else {
-        // Vertical swipe (Up for jump)
-        if (dy < -50 && !stateRef.current.isJumping) {
+      } else if (dy < -40 && !stateRef.current.isJumping) {
           stateRef.current.verticalVelocity = JUMP_FORCE;
           stateRef.current.isJumping = true;
-           soundManager.playJump();
-        }
+          soundManager.playJump();
       }
     };
 
@@ -138,218 +200,302 @@ const GameLogic = ({ gameState, setGameState }: GameSceneProps) => {
     };
   }, []);
 
+  // Spawn Particle
+  const spawnParticles = (x: number, y: number, z: number, color: string, count: number) => {
+      for(let i=0; i<count; i++) {
+          stateRef.current.particles.push({
+              id: Math.random(),
+              x, y, z,
+              vx: (Math.random() - 0.5) * 4,
+              vy: (Math.random() * 4) + 2,
+              vz: (Math.random() - 0.5) * 4,
+              life: 1.0,
+              color
+          });
+      }
+  };
+
   // Game Loop
   useFrame((state, delta) => {
     if (stateRef.current.status !== GameStatus.PLAYING) return;
 
-    const currentSpeed = stateRef.current.furyTimer > 0 ? BASE_SPEED * FURY_SPEED_MULTIPLIER : BASE_SPEED + (Math.abs(stateRef.current.playerZ) * 0.005);
-    stateRef.current.speed = currentSpeed;
+    const dt = Math.min(delta, 0.1); // Cap delta for lag spikes
+    const s = stateRef.current;
 
-    // Move Player Forward (In -Z direction)
-    stateRef.current.playerZ -= currentSpeed * delta;
+    // --- SPEED & SCORE ---
+    // Base speed increases with distance
+    let targetSpeed = BASE_SPEED + (Math.abs(s.playerZ) * 0.01);
+    if (s.furyTimer > 0) targetSpeed *= FURY_SPEED_MULTIPLIER;
+    if (s.activePowerup === EntityType.POWERUP_TURBO) targetSpeed *= 1.8;
+    
+    targetSpeed = Math.min(targetSpeed, MAX_SPEED); // Cap absolute max
+    
+    // Smooth speed transition
+    s.speed = THREE.MathUtils.lerp(s.speed, targetSpeed, dt * 2);
 
-    // Handle Fury Timer
-    if (stateRef.current.furyTimer > 0) {
-      stateRef.current.furyTimer -= delta;
+    s.playerZ -= s.speed * dt;
+    s.score += (s.speed * dt) * 0.5; // Score based on distance
+
+    // --- TIMERS ---
+    if (s.furyTimer > 0) {
+        s.furyTimer -= dt;
+        if (s.furyTimer <= 0) {
+             setGameState(prev => ({ ...prev, furyMode: false }));
+        }
+    }
+    if (s.powerupTimer > 0) {
+        s.powerupTimer -= dt;
+        if (s.powerupTimer <= 0) {
+            s.activePowerup = null;
+            setGameState(prev => ({ ...prev, shieldActive: false, magnetActive: false }));
+        }
     }
 
-    // Physics: Lane Switching (Lerp)
+    // --- PHYSICS: PLAYER ---
     if (playerRef.current) {
-      playerRef.current.position.x = THREE.MathUtils.lerp(playerRef.current.position.x, stateRef.current.playerLane, delta * 10);
-      playerRef.current.position.z = stateRef.current.playerZ;
+      // X movement with "tilt"
+      playerRef.current.position.x = THREE.MathUtils.lerp(playerRef.current.position.x, s.playerLane * (LANE_WIDTH/2), dt * 12);
+      const tilt = (playerRef.current.position.x - (s.playerLane * (LANE_WIDTH/2))) * -0.2;
+      playerRef.current.rotation.z = THREE.MathUtils.lerp(playerRef.current.rotation.z, tilt, dt * 10);
+      
+      playerRef.current.position.z = s.playerZ;
     }
 
-    // Physics: Jump
-    if (stateRef.current.isJumping) {
-      stateRef.current.playerY += stateRef.current.verticalVelocity * delta;
-      stateRef.current.verticalVelocity -= GRAVITY * delta;
-      if (stateRef.current.playerY <= 0) {
-        stateRef.current.playerY = 0;
-        stateRef.current.isJumping = false;
-        stateRef.current.verticalVelocity = 0;
+    // Y Movement (Jump)
+    if (s.isJumping) {
+      s.playerY += s.verticalVelocity * dt;
+      s.verticalVelocity -= GRAVITY * dt;
+      if (s.playerY <= 0) {
+        s.playerY = 0;
+        s.isJumping = false;
+        s.verticalVelocity = 0;
+        // Land dust?
       }
       if (playerRef.current) {
-        playerRef.current.position.y = stateRef.current.playerY;
+          playerRef.current.position.y = s.playerY;
       }
     }
 
-    // Camera Follow
+    // --- PARTICLES ---
+    for (let i = s.particles.length - 1; i >= 0; i--) {
+        const p = s.particles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.z += p.vz * dt + (s.speed * dt * 0.5); // Wind effect
+        p.vy -= 15 * dt; // Gravity
+        p.life -= dt * 1.5;
+        if (p.life <= 0 || p.y < 0) {
+            s.particles.splice(i, 1);
+        }
+    }
+
+    // --- CAMERA ---
     if (cameraRef.current) {
-      const camTargetZ = stateRef.current.playerZ + 6; // Behind
-      const camTargetY = 3 + (stateRef.current.playerY * 0.5);
-      cameraRef.current.position.z = THREE.MathUtils.lerp(cameraRef.current.position.z, camTargetZ, delta * 5);
-      cameraRef.current.position.x = THREE.MathUtils.lerp(cameraRef.current.position.x, stateRef.current.playerLane * 0.3, delta * 2);
-      cameraRef.current.position.y = THREE.MathUtils.lerp(cameraRef.current.position.y, camTargetY, delta * 5);
-      cameraRef.current.lookAt(0, 1, stateRef.current.playerZ - 10);
+      // Shake decay
+      s.shakeIntensity = THREE.MathUtils.lerp(s.shakeIntensity, 0, dt * 5);
+      const shakeX = (Math.random() - 0.5) * s.shakeIntensity;
+      const shakeY = (Math.random() - 0.5) * s.shakeIntensity;
+
+      const camDist = s.activePowerup === EntityType.POWERUP_TURBO ? 9 : 7;
+      const camHeight = 3.5 + (s.playerY * 0.3);
+      const fovBase = 60;
+      const fovTarget = s.activePowerup === EntityType.POWERUP_TURBO ? 85 : (s.furyTimer > 0 ? 75 : 60);
+      
+      cameraRef.current.fov = THREE.MathUtils.lerp(cameraRef.current.fov, fovTarget, dt * 2);
+      cameraRef.current.updateProjectionMatrix();
+
+      const targetZ = s.playerZ + camDist;
+      cameraRef.current.position.z = THREE.MathUtils.lerp(cameraRef.current.position.z, targetZ, dt * 10);
+      cameraRef.current.position.y = THREE.MathUtils.lerp(cameraRef.current.position.y, camHeight, dt * 5);
+      cameraRef.current.position.x = THREE.MathUtils.lerp(cameraRef.current.position.x, (s.playerLane * 0.5) + shakeX, dt * 3);
+      cameraRef.current.lookAt(0 + shakeX, 1 + shakeY, s.playerZ - 10);
     }
 
-    // Spawn Entities
-    if (stateRef.current.playerZ - stateRef.current.lastSpawnZ < -15) {
-      // Spawn a new row every 15 units
-      stateRef.current.lastSpawnZ = stateRef.current.playerZ;
-      const spawnZ = stateRef.current.playerZ - SPAWN_DISTANCE;
+    // --- SPAWNING ---
+    if (s.playerZ - s.lastSpawnZ < -20) {
+      s.lastSpawnZ = s.playerZ;
+      const spawnZ = s.playerZ - SPAWN_DISTANCE;
       
-      // Simple spawning logic
-      const lanes = [Lane.LEFT, Lane.MIDDLE, Lane.RIGHT];
-      const laneToSpawn = lanes[Math.floor(Math.random() * lanes.length)];
+      // Choose Pattern
+      const r = Math.random();
+      let newEntities: GameEntity[] = [];
       
-      const isItem = Math.random() > 0.4; // 60% chance item, 40% obstacle
-      let type: EntityType;
-
-      if (isItem) {
-         const items = [EntityType.ITEM_TOMATO, EntityType.ITEM_CHEESE, EntityType.ITEM_STEAK];
-         type = items[Math.floor(Math.random() * items.length)];
+      if (r < 0.1 && !s.activePowerup) {
+          newEntities = createPowerupPattern(spawnZ);
+      } else if (r < 0.4) {
+          newEntities = createSingleLinePattern(spawnZ);
+      } else if (r < 0.7) {
+          newEntities = createWallPattern(spawnZ);
       } else {
-         type = Math.random() > 0.5 ? EntityType.OBSTACLE_KNIFE : EntityType.OBSTACLE_POT;
+          // Random simple row
+          const lane = [Lane.LEFT, Lane.MIDDLE, Lane.RIGHT][Math.floor(Math.random()*3)];
+          const type = Math.random() > 0.5 ? EntityType.OBSTACLE_KNIFE : EntityType.OBSTACLE_BURNER;
+          newEntities.push({ id: Math.random().toString(), type, x: lane, z: spawnZ, active: true });
       }
-
-      const newEntity: GameEntity = {
-        id: Math.random().toString(36).substr(2, 9),
-        type,
-        x: laneToSpawn,
-        z: spawnZ,
-        active: true
-      };
       
-      stateRef.current.entities.push(newEntity);
-      
-      // Cleanup old entities
-      stateRef.current.entities = stateRef.current.entities.filter(e => e.z < stateRef.current.playerZ + DESPAWN_DISTANCE);
+      s.entities.push(...newEntities);
+      // Cleanup
+      s.entities = s.entities.filter(e => e.z < s.playerZ + DESPAWN_DISTANCE && e.active);
     }
 
-    // Collision Detection
-    stateRef.current.entities.forEach(entity => {
+    // --- ENTITY LOGIC & COLLISION ---
+    s.entities.forEach(entity => {
        if (!entity.active) return;
 
-       // Check distance on Z axis
-       const dz = Math.abs(entity.z - stateRef.current.playerZ);
-       // Check lane (using X approximately)
-       // We assume player is in lane if X is close to lane center
+       // MAGNET EFFECT
+       if (s.activePowerup === EntityType.POWERUP_MAGNET && entity.type.startsWith('ITEM')) {
+           const dist = Math.sqrt(Math.pow(entity.x - playerRef.current!.position.x, 2) + Math.pow(entity.z - s.playerZ, 2));
+           if (dist < 10) {
+               entity.x = THREE.MathUtils.lerp(entity.x, playerRef.current!.position.x, dt * 5);
+               entity.z = THREE.MathUtils.lerp(entity.z, s.playerZ, dt * 5);
+           }
+       }
+
+       const dz = Math.abs(entity.z - s.playerZ);
        const dx = Math.abs(entity.x - (playerRef.current?.position.x || 0));
 
-       if (dz < COLLISION_THRESHOLD && dx < 0.5) {
-         // Collision candidate
-         // Check vertical clearance for jumpable obstacles if we wanted to implement duck/jump specific logic
-         // For now, simple collision:
-         
-         if (entity.type.startsWith('ITEM')) {
-            // Collect
+       if (dz < COLLISION_THRESHOLD && dx < 0.7) {
+         if (entity.type.startsWith('ITEM') || entity.type.startsWith('POWERUP')) {
+            // COLLECT
             soundManager.playCollect();
             entity.active = false;
-            stateRef.current.score += 10;
             
-            // Check combo
-            const newIngredients = [...stateRef.current.ingredients, entity.type];
-            // Keep only last 3
-            if (newIngredients.length > 3) newIngredients.shift();
-            stateRef.current.ingredients = newIngredients;
-            
-            // Simple Combo Logic: If we have 3 distinct items? Or just specific ones. 
-            // Let's do: Any 3 items collected recently triggers fury if not already active
-            if (!stateRef.current.furyTimer && newIngredients.length === 3) {
-                const unique = new Set(newIngredients);
-                if (unique.size >= 2) { // Diversity bonus -> Fury
-                    stateRef.current.furyTimer = FURY_DURATION;
-                    stateRef.current.ingredients = [];
-                    soundManager.playFuryStart();
+            if (entity.type.startsWith('POWERUP')) {
+                soundManager.playPowerup(
+                    entity.type === EntityType.POWERUP_SHIELD ? 'shield' : 
+                    entity.type === EntityType.POWERUP_MAGNET ? 'magnet' : 'turbo'
+                );
+                s.activePowerup = entity.type;
+                s.powerupTimer = POWERUP_DURATION;
+                setGameState(prev => ({ 
+                    ...prev, 
+                    shieldActive: entity.type === EntityType.POWERUP_SHIELD,
+                    magnetActive: entity.type === EntityType.POWERUP_MAGNET
+                }));
+            } else {
+                // Item
+                s.score += 50;
+                spawnParticles(entity.x, 0.5, entity.z, "gold", 5);
+                
+                // Combo logic
+                const newIngredients = [...s.ingredients, entity.type];
+                if (newIngredients.length > 3) newIngredients.shift();
+                s.ingredients = newIngredients;
+                
+                if (!s.furyTimer && newIngredients.length === 3) {
+                    const unique = new Set(newIngredients);
+                    if (unique.size >= 2) { 
+                        s.furyTimer = FURY_DURATION;
+                        s.ingredients = [];
+                        soundManager.playFuryStart();
+                        setGameState(prev => ({ ...prev, furyMode: true }));
+                    }
                 }
+                setGameState(prev => ({ ...prev, score: s.score, ingredients: s.ingredients }));
             }
-            
-            // Sync score to React state occasionally (for UI) or every frame?
-            // For performance, we update React state only on events, not every frame.
-            setGameState(prev => ({
-                ...prev, 
-                score: stateRef.current.score,
-                ingredients: stateRef.current.ingredients,
-                furyMode: stateRef.current.furyTimer > 0
-            }));
-
          } else {
-            // Obstacle
-            // If jumping high enough over POT? Maybe.
-            // Let's make KNIFE tall (undodgeable by jump), POT small (jumpable).
-            const isJumpable = entity.type === EntityType.OBSTACLE_POT;
-            const isHighEnough = stateRef.current.playerY > 1.0;
+            // OBSTACLE
+            const isJumpable = entity.type === EntityType.OBSTACLE_POT || entity.type === EntityType.OBSTACLE_BURNER;
+            const isHighEnough = s.playerY > 1.2;
 
             if (isJumpable && isHighEnough) {
-                // Dodged
+                // Dodged by jump
             } else {
-                // Crash
-                if (stateRef.current.furyTimer > 0) {
-                     // Invincible in Fury Mode? Or just break obstacle?
-                     // Let's make invincible
-                     entity.active = false;
-                     soundManager.playCrash(); // Different sound maybe
-                } else {
+                // HIT
+                if (s.activePowerup === EntityType.POWERUP_SHIELD) {
+                    // Shield Break
+                    entity.active = false;
+                    s.activePowerup = null;
+                    s.powerupTimer = 0;
+                    s.shakeIntensity = 0.5;
+                    spawnParticles(0, 1, s.playerZ + 1, "blue", 10);
+                    soundManager.playCrash(); // Soft crash
+                    setGameState(prev => ({ ...prev, shieldActive: false }));
+                } else if (s.furyTimer > 0 || s.activePowerup === EntityType.POWERUP_TURBO) {
+                    // Smash through
+                    entity.active = false;
+                    s.shakeIntensity = 0.3;
                     soundManager.playCrash();
-                    stateRef.current.status = GameStatus.GAME_OVER;
+                    spawnParticles(entity.x, 0.5, entity.z, "gray", 8);
+                } else {
+                    // Game Over
+                    s.shakeIntensity = 1.0;
+                    soundManager.playCrash();
+                    s.status = GameStatus.GAME_OVER;
                     setGameState(prev => ({ ...prev, status: GameStatus.GAME_OVER }));
                 }
             }
          }
        }
     });
-  });
 
-  // Update Entities Visuals from ref
-  // We need to force re-render of the entities group? 
-  // No, `useFrame` handles logic, React renders based on state. 
-  // Problem: `stateRef.current.entities` is not a React state, so adding to it won't trigger re-render of <Entity /> list.
-  // Solution: Use a separate state for rendering entities, or use instanced mesh, or simple brute force:
-  // Since we need high FPS, syncing array to State every frame is bad.
-  // Better: The <Entities> component reads from ref or we use a fast state manager. 
-  // For this prompt, I will use a `useState` that updates periodically or just strictly when spawning happens?
-  // Actually, for a simple game, syncing state on spawn (rare event) is fine.
-  
-  const [renderEntities, setRenderEntities] = useState<GameEntity[]>([]);
-  
-  useFrame(() => {
-      // Simple dirty check to update render list
-      if (stateRef.current.entities.length !== renderEntities.length || 
-          stateRef.current.entities.some((e, i) => e.active !== renderEntities[i]?.active)) {
-          setRenderEntities([...stateRef.current.entities]);
-      }
+    // Sync render state occasionally for perf
+    if (state.clock.elapsedTime % 0.05 < 0.02) {
+         setRenderEntities([...s.entities]);
+         setRenderParticles([...s.particles]);
+    }
   });
 
   return (
     <>
-      <PerspectiveCamera ref={cameraRef} makeDefault position={[0, 3, 6]} fov={60} />
-      <ambientLight intensity={0.5} />
+      <PerspectiveCamera ref={cameraRef} makeDefault position={[0, 4, 8]} fov={60} />
+      
+      {/* Lighting: Giant Kitchen Ambience */}
+      <ambientLight intensity={0.7} color="#fff7ed" /> {/* Warm ambient */}
       <directionalLight 
-        position={[10, 20, 10]} 
-        intensity={1.5} 
+        position={[20, 50, 10]} 
+        intensity={1.2} 
         castShadow 
         shadow-mapSize={[1024, 1024]}
+        color="#fff"
       />
-      <Environment preset="sunset" />
-      <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
+      <SpotLight 
+         position={[0, 10, stateRef.current.playerZ - 10]}
+         angle={0.5}
+         penumbra={1}
+         intensity={2}
+         color="#fbbf24"
+         distance={40}
+         target={playerRef.current || undefined}
+      />
 
-      {/* Moving Floor Effect */}
-      <group position={[0, -0.1, stateRef.current.playerZ]}> 
-         {/* We parent the floor to the player Z so it looks infinite? 
-             Actually no, standard runner: Player moves -Z. Floor is static but huge/tiled.
-             We will create tiled floor segments.
-         */}
+      <Stars radius={200} depth={50} count={1000} factor={4} saturation={0} fade speed={1} />
+
+      {/* Environment Props Scaling with player position to fake infinity */}
+      <group position={[0, 0, Math.floor(stateRef.current.playerZ / 100) * 100]}>
+           <KitchenCountertop />
+           {/* Next chunk */}
+           <group position={[0, 0, -100]}><KitchenCountertop /></group>
       </group>
-      
-      {/* Simple infinite floor using grid helper moving with player */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, stateRef.current.playerZ - 20]} receiveShadow>
-         <planeGeometry args={[20, 100]} />
-         <meshStandardMaterial color="#fef3c7" />
-      </mesh>
-      
-      {/* Decor: Kitchen Tiles */}
-      <gridHelper 
-        args={[200, 100, 0xd97706, 0xd97706]} 
-        position={[0, 0.01, 0]} 
-        rotation={[0,0,0]}
-      />
+
+      {/* Giant Side Props (Looping) */}
+      {sideProps.map(prop => {
+          // Calculate relative Z to loop them around the player
+          const loopLength = 600;
+          const relativeZ = (prop.z - stateRef.current.playerZ) % loopLength;
+          const visibleZ = stateRef.current.playerZ + relativeZ;
+          
+          // Only render if within view distance
+          if (Math.abs(visibleZ - stateRef.current.playerZ) > 100) return null;
+
+          return (
+              <group key={prop.id}>
+                  <GiantProp 
+                     type={prop.type} 
+                     x={prop.x} 
+                     z={visibleZ} 
+                     rotation={prop.rotation} 
+                  />
+              </group>
+          );
+      })}
 
       {/* Player */}
       <group ref={playerRef}>
         <ChefModel 
             isFury={stateRef.current.furyTimer > 0} 
-            isJumping={stateRef.current.isJumping} 
+            isJumping={stateRef.current.isJumping}
+            shieldActive={stateRef.current.shieldActive}
         />
         {/* Shadow blob */}
         <mesh rotation={[-Math.PI/2, 0, 0]} position={[0, 0.02, 0]}>
@@ -360,34 +506,24 @@ const GameLogic = ({ gameState, setGameState }: GameSceneProps) => {
 
       {/* Entities */}
       {renderEntities.map(entity => (
-        entity.active && <Entity key={entity.id} entity={entity} />
+          entity.active && (
+              <group key={entity.id} position={[entity.x, 0, entity.z]}>
+                  <EntityModel type={entity.type} />
+              </group>
+          )
       ))}
 
-      {/* Kitchen Background Walls (Moving with player to simulate giant room) */}
-       <mesh position={[-8, 5, stateRef.current.playerZ - 10]}>
-          <boxGeometry args={[1, 10, 50]} />
-          <meshStandardMaterial color="#78350f" />
-       </mesh>
-       <mesh position={[8, 5, stateRef.current.playerZ - 10]}>
-          <boxGeometry args={[1, 10, 50]} />
-          <meshStandardMaterial color="#78350f" />
-       </mesh>
-
-       {/* Giant Spoons/Forks in background */}
-       <group position={[12, 0, stateRef.current.playerZ - 30]} rotation={[0, -0.5, 0.2]}>
-          <mesh>
-            <cylinderGeometry args={[0.5, 0.5, 20]} />
-            <meshStandardMaterial color="silver" />
-          </mesh>
-       </group>
+      {/* Particles */}
+      <ParticleSystem particles={renderParticles} />
     </>
   );
 };
 
 export default function GameScene({ gameState, setGameState }: GameSceneProps) {
   return (
-    <Canvas shadows dpr={[1, 2]}>
+    <Canvas shadows dpr={[1, 2]} gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping }}>
       <GameLogic gameState={gameState} setGameState={setGameState} />
+      <Environment preset="sunset" blur={0.6} />
     </Canvas>
   );
 }

@@ -1,25 +1,38 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { EntityType } from '../types';
+import { EntityType, Particle } from '../types';
+
+// --- Materials ---
+const materials = {
+    metal: new THREE.MeshStandardMaterial({ color: "#9ca3af", metalness: 0.9, roughness: 0.2 }),
+    wood: new THREE.MeshStandardMaterial({ color: "#78350f", roughness: 0.8 }),
+    tomato: new THREE.MeshStandardMaterial({ color: "#ef4444", roughness: 0.2, emissive: "#7f1d1d", emissiveIntensity: 0.2 }),
+    cheese: new THREE.MeshStandardMaterial({ color: "#fbbf24", roughness: 0.5 }),
+    steak: new THREE.MeshStandardMaterial({ color: "#7f1d1d", roughness: 0.6 }),
+    whitePlastic: new THREE.MeshStandardMaterial({ color: "#f3f4f6", roughness: 0.3 }),
+    glowBlue: new THREE.MeshStandardMaterial({ color: "#3b82f6", emissive: "#3b82f6", emissiveIntensity: 2, toneMapped: false }),
+    glowPurple: new THREE.MeshStandardMaterial({ color: "#a855f7", emissive: "#a855f7", emissiveIntensity: 2, toneMapped: false }),
+    glowOrange: new THREE.MeshStandardMaterial({ color: "#f97316", emissive: "#f97316", emissiveIntensity: 2, toneMapped: false })
+};
 
 // --- The Chef Character ---
-export const ChefModel = ({ isFury, isJumping }: { isFury: boolean; isJumping: boolean }) => {
+export const ChefModel = ({ isFury, isJumping, shieldActive }: { isFury: boolean; isJumping: boolean, shieldActive: boolean }) => {
   const groupRef = useRef<THREE.Group>(null);
   const leftLegRef = useRef<THREE.Mesh>(null);
   const rightLegRef = useRef<THREE.Mesh>(null);
-  const hatRef = useRef<THREE.Mesh>(null);
+  const hatRef = useRef<THREE.Group>(null);
+  const shieldRef = useRef<THREE.Mesh>(null);
   
   useFrame((state) => {
     if (!groupRef.current) return;
-    
-    // Running animation
     const time = state.clock.getElapsedTime();
-    const speed = isFury ? 20 : 15;
+    const speed = isFury ? 25 : 18;
     
+    // Running
     if (leftLegRef.current && rightLegRef.current) {
       if (isJumping) {
-         leftLegRef.current.rotation.x = -0.5;
+         leftLegRef.current.rotation.x = -0.8;
          rightLegRef.current.rotation.x = 0.5;
       } else {
         leftLegRef.current.rotation.x = Math.sin(time * speed) * 0.8;
@@ -27,31 +40,47 @@ export const ChefModel = ({ isFury, isJumping }: { isFury: boolean; isJumping: b
       }
     }
 
-    // Bobbing head/hat
+    // Hat wobble
     if (hatRef.current) {
+        hatRef.current.rotation.z = Math.sin(time * 10) * 0.05;
         hatRef.current.position.y = 1.6 + Math.abs(Math.sin(time * speed * 2)) * 0.05;
+    }
+
+    // Shield Animation
+    if (shieldRef.current) {
+        shieldRef.current.rotation.y += delta => 2 * delta;
+        shieldRef.current.rotation.z = Math.sin(time * 2) * 0.2;
+        const scale = 1 + Math.sin(time * 5) * 0.05;
+        shieldRef.current.scale.set(scale, scale, scale);
     }
   });
 
   return (
     <group ref={groupRef}>
+      {/* Shield Visual */}
+      {shieldActive && (
+        <mesh ref={shieldRef} position={[0, 1, 0]}>
+            <sphereGeometry args={[1.2, 32, 32]} />
+            <meshBasicMaterial color="#60a5fa" transparent opacity={0.3} wireframe />
+        </mesh>
+      )}
+
       {/* Body (Apron) */}
       <mesh position={[0, 0.75, 0]} castShadow receiveShadow>
         <cylinderGeometry args={[0.35, 0.4, 0.8, 16]} />
         <meshStandardMaterial color="white" />
       </mesh>
       {/* Apron detail */}
-      <mesh position={[0, 0.6, 0.25]} rotation={[0,0,0]}>
+      <mesh position={[0, 0.6, 0.25]}>
          <boxGeometry args={[0.5, 0.6, 0.1]} />
-         <meshStandardMaterial color={isFury ? "#ef4444" : "#f97316"} emissive={isFury ? "#ef4444" : "black"} emissiveIntensity={isFury ? 1 : 0} />
+         <meshStandardMaterial color={isFury ? "#ef4444" : "#f97316"} emissive={isFury ? "#ef4444" : "black"} emissiveIntensity={isFury ? 0.5 : 0} />
       </mesh>
 
       {/* Head */}
       <mesh position={[0, 1.3, 0]} castShadow>
         <sphereGeometry args={[0.25, 16, 16]} />
-        <meshStandardMaterial color="#fca5a5" /> {/* Skin tone */}
+        <meshStandardMaterial color="#fca5a5" />
       </mesh>
-
       {/* Mustache */}
       <mesh position={[0, 1.25, 0.22]} rotation={[0,0,Math.PI/2]}>
         <cylinderGeometry args={[0.02, 0.02, 0.2, 8]} />
@@ -91,87 +120,256 @@ export const ChefModel = ({ isFury, isJumping }: { isFury: boolean; isJumping: b
   );
 };
 
-// --- Items & Obstacles ---
+// --- Props & Obstacles ---
 
-export const IngredientModel = ({ type }: { type: EntityType }) => {
-  const meshRef = useRef<THREE.Mesh>(null);
+export const EntityModel = React.memo(({ type }: { type: EntityType }) => {
+  const meshRef = useRef<THREE.Group>(null);
   
   useFrame((state) => {
-    if (meshRef.current) {
-      meshRef.current.rotation.y += 0.02;
-      meshRef.current.position.y = 0.5 + Math.sin(state.clock.getElapsedTime() * 3) * 0.1;
+    if (!meshRef.current) return;
+    
+    // Idle animations
+    if (type === EntityType.OBSTACLE_KNIFE) {
+       meshRef.current.rotation.z = Math.sin(state.clock.getElapsedTime() * 5) * 0.1; // Swing
+    } else if (type === EntityType.OBSTACLE_BURNER) {
+       // Flicker handled by material or particles usually, but static here for perf
+    } else {
+       // Items and powerups rotate
+       meshRef.current.rotation.y += 0.03;
+       meshRef.current.position.y = Math.sin(state.clock.getElapsedTime() * 3) * 0.1;
     }
   });
 
-  if (type === EntityType.ITEM_TOMATO) {
-    return (
-      <mesh ref={meshRef} position={[0,0.5,0]} castShadow>
-        <sphereGeometry args={[0.3, 16, 16]} />
-        <meshStandardMaterial color="#ef4444" roughness={0.2} />
-        <mesh position={[0, 0.28, 0]}>
-             <cylinderGeometry args={[0.05, 0, 0.1]} />
-             <meshStandardMaterial color="green" />
-        </mesh>
-      </mesh>
-    );
-  }
-  if (type === EntityType.ITEM_CHEESE) {
-    return (
-      <mesh ref={meshRef} position={[0,0.5,0]} castShadow rotation={[0.5, 0.5, 0]}>
-        <boxGeometry args={[0.4, 0.3, 0.4]} />
-        <meshStandardMaterial color="#fbbf24" />
-      </mesh>
-    );
-  }
-  if (type === EntityType.ITEM_STEAK) {
-     return (
-      <mesh ref={meshRef} position={[0,0.5,0]} castShadow rotation={[Math.PI/2, 0, 0]}>
-        <boxGeometry args={[0.5, 0.4, 0.1]} />
-        <meshStandardMaterial color="#7f1d1d" />
-      </mesh>
-    );
-  }
-  return null;
-};
-
-export const ObstacleModel = ({ type }: { type: EntityType }) => {
+  // --- OBSTACLES ---
   if (type === EntityType.OBSTACLE_KNIFE) {
     return (
-      <group position={[0, 0.8, 0]}>
-        <mesh castShadow>
+      <group ref={meshRef} position={[0, 1.5, 0]}>
+        {/* Blade */}
+        <mesh castShadow position={[0, 0.5, 0]}>
            <boxGeometry args={[0.1, 2.5, 0.8]} />
-           <meshStandardMaterial color="#9ca3af" metalness={0.8} roughness={0.2} />
+           <primitive object={materials.metal} />
         </mesh>
-        <mesh position={[0, -1.2, 0]}>
-            <cylinderGeometry args={[0.12, 0.12, 0.6]} rotation={[Math.PI/2,0,0]} />
-            <meshStandardMaterial color="#4b5563" />
+        {/* Handle */}
+        <mesh position={[0, 1.8, 0]}>
+            <cylinderGeometry args={[0.15, 0.15, 0.8]} rotation={[Math.PI/2,0,0]} />
+            <meshStandardMaterial color="#1f2937" />
         </mesh>
       </group>
     );
   }
   if (type === EntityType.OBSTACLE_POT) {
     return (
-       <group position={[0, 0.5, 0]}>
+       <group ref={meshRef} position={[0, 0.6, 0]}>
         <mesh castShadow>
-           <cylinderGeometry args={[0.6, 0.5, 0.8, 16]} />
-           <meshStandardMaterial color="#374151" metalness={0.5} roughness={0.6} />
+           <cylinderGeometry args={[0.7, 0.6, 1.2, 16]} />
+           <meshStandardMaterial color="#374151" metalness={0.6} roughness={0.4} />
         </mesh>
-         <mesh position={[0, 0.3, 0]}>
-           <cylinderGeometry args={[0.5, 0, 0.2, 16]} />
-           <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={0.5} />
+        {/* Soup */}
+         <mesh position={[0, 0.5, 0]}>
+           <cylinderGeometry args={[0.6, 0, 0.1, 16]} />
+           <meshStandardMaterial color="#16a34a" />
+        </mesh>
+        {/* Handle */}
+        <mesh position={[0.7, 0.3, 0]} rotation={[0,0,Math.PI/2]}>
+            <cylinderGeometry args={[0.1, 0.1, 0.4]} />
+            <primitive object={materials.metal} />
         </mesh>
       </group>
     );
   }
+  if (type === EntityType.OBSTACLE_BURNER) {
+      return (
+          <group ref={meshRef} position={[0, 0.1, 0]}>
+              <mesh receiveShadow>
+                  <cylinderGeometry args={[1, 1.1, 0.2, 16]} />
+                  <meshStandardMaterial color="#111" />
+              </mesh>
+              {/* Fire */}
+              <mesh position={[0, 0.3, 0]}>
+                   <coneGeometry args={[0.8, 1, 8]} />
+                   <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={2} transparent opacity={0.7} />
+              </mesh>
+              <pointLight color="#ef4444" intensity={2} distance={3} position={[0, 1, 0]} />
+          </group>
+      )
+  }
+
+  // --- ITEMS ---
+  if (type === EntityType.ITEM_TOMATO) {
+    return (
+      <group ref={meshRef} position={[0,0.5,0]}>
+        <mesh castShadow>
+            <sphereGeometry args={[0.35, 16, 16]} />
+            <primitive object={materials.tomato} />
+        </mesh>
+        {/* Leaves constructed from standard primitives */}
+        <group position={[0, 0.32, 0]}>
+             {/* Star/Calyx shape */}
+             <mesh>
+                 <cylinderGeometry args={[0.01, 0.25, 0.05, 5]} />
+                 <meshStandardMaterial color="#166534" />
+             </mesh>
+             {/* Stem */}
+             <mesh position={[0, 0.1, 0]}>
+                 <cylinderGeometry args={[0.03, 0.03, 0.2, 6]} />
+                 <meshStandardMaterial color="#166534" />
+             </mesh>
+        </group>
+      </group>
+    );
+  }
+  if (type === EntityType.ITEM_CHEESE) {
+    return (
+      <mesh ref={meshRef} position={[0,0.5,0]} castShadow rotation={[0.5, 0.5, 0]}>
+        <boxGeometry args={[0.5, 0.4, 0.5]} />
+        <primitive object={materials.cheese} />
+        {/* Holes */}
+        <mesh position={[0.1, 0.1, 0.26]}>
+             <sphereGeometry args={[0.08]} />
+             <meshStandardMaterial color="#d97706" />
+        </mesh>
+      </mesh>
+    );
+  }
+  if (type === EntityType.ITEM_STEAK) {
+     return (
+      <mesh ref={meshRef} position={[0,0.5,0]} castShadow rotation={[Math.PI/2, 0, 0]}>
+        <boxGeometry args={[0.6, 0.5, 0.15]} />
+        <primitive object={materials.steak} />
+        <mesh position={[0,0,0.08]} rotation={[0,0,0.5]}>
+             <boxGeometry args={[0.6, 0.05, 0.01]} />
+             <meshBasicMaterial color="#111" opacity={0.3} transparent />
+        </mesh>
+      </mesh>
+    );
+  }
+
+  // --- POWERUPS ---
+  if (type === EntityType.POWERUP_MAGNET) {
+      return (
+        <group ref={meshRef} position={[0, 0.8, 0]}>
+            {/* U Shape */}
+            <mesh castShadow>
+                <torusGeometry args={[0.4, 0.1, 8, 16, Math.PI]} />
+                <primitive object={materials.metal} />
+            </mesh>
+            <mesh position={[-0.4, -0.2, 0]}>
+                <boxGeometry args={[0.2, 0.4, 0.2]} />
+                <meshStandardMaterial color="red" />
+            </mesh>
+            <mesh position={[0.4, -0.2, 0]}>
+                <boxGeometry args={[0.2, 0.4, 0.2]} />
+                <meshStandardMaterial color="red" />
+            </mesh>
+            <pointLight color="white" intensity={1} distance={3} />
+        </group>
+      );
+  }
+  if (type === EntityType.POWERUP_SHIELD) {
+      return (
+          <group ref={meshRef} position={[0, 0.8, 0]}>
+              <mesh>
+                  <sphereGeometry args={[0.4, 16, 16]} />
+                  <primitive object={materials.glowBlue} />
+              </mesh>
+              <mesh scale={[1.2,1.2,1.2]}>
+                  <sphereGeometry args={[0.4, 8, 8]} />
+                  <meshBasicMaterial color="white" wireframe transparent opacity={0.5} />
+              </mesh>
+          </group>
+      )
+  }
+  if (type === EntityType.POWERUP_TURBO) {
+      return (
+          <group ref={meshRef} position={[0, 0.8, 0]}>
+             <mesh rotation={[0,0,Math.PI/2]}>
+                 <coneGeometry args={[0.3, 0.8, 8]} />
+                 <primitive object={materials.glowOrange} />
+             </mesh>
+             <mesh position={[0, -0.4, 0]} rotation={[Math.PI/2, 0, 0]}>
+                 <ringGeometry args={[0.2, 0.5, 8]} />
+                 <meshBasicMaterial color="orange" side={THREE.DoubleSide} />
+             </mesh>
+          </group>
+      )
+  }
+
   return null;
+});
+
+// --- Background Environment ---
+
+export const GiantProp = ({ type, x, z, rotation }: { type: string, x: number, z: number, rotation: number }) => {
+    // Giant kitchen items placed outside the play area
+    if (type === 'toaster') {
+        return (
+            <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[5, 5, 5]}>
+                <mesh castShadow receiveShadow position={[0, 1, 0]}>
+                    <boxGeometry args={[2, 1.5, 1]} />
+                    <primitive object={materials.metal} />
+                </mesh>
+                <mesh position={[0, 1.8, 0]}>
+                    <boxGeometry args={[1.5, 0.1, 0.2]} />
+                    <meshStandardMaterial color="#111" />
+                </mesh>
+            </group>
+        );
+    }
+    if (type === 'flour') {
+        return (
+             <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[4, 4, 4]}>
+                <mesh castShadow position={[0, 1.5, 0]}>
+                    <boxGeometry args={[1.5, 3, 1]} />
+                    <meshStandardMaterial color="#fef3c7" roughness={1} />
+                </mesh>
+                <mesh position={[0, 2, 1.01]}>
+                    <planeGeometry args={[1, 1]} />
+                    <meshBasicMaterial color="#d97706" /> {/* Label */}
+                </mesh>
+             </group>
+        )
+    }
+    if (type === 'milk') {
+        return (
+            <group position={[x, 0, z]} rotation={[0, rotation, 0]} scale={[4, 4, 4]}>
+                 <mesh castShadow position={[0, 2, 0]}>
+                    <boxGeometry args={[1.5, 4, 1.5]} />
+                    <meshStandardMaterial color="#3b82f6" roughness={0.8} />
+                 </mesh>
+                 <mesh position={[0, 4.2, 0]} rotation={[0,0,Math.PI/4]}>
+                     <boxGeometry args={[1, 0.5, 1.5]} />
+                     <meshStandardMaterial color="#3b82f6" />
+                 </mesh>
+            </group>
+        )
+    }
+    return null;
 };
 
-export const KitchenFloor = () => {
-  // Creates a checkered infinite-looking floor pattern
-  return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, -50]} receiveShadow>
-      <planeGeometry args={[20, 200]} />
-      <meshStandardMaterial color="#fde68a" />
-    </mesh>
-  );
-};
+export const KitchenCountertop = () => {
+    // Seamless repeating floor logic is handled in Scene, this is just the material look
+    // We use a big plane with a wood texture look
+    return (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, -100]} receiveShadow>
+            <planeGeometry args={[40, 400]} />
+            <primitive object={materials.wood} />
+        </mesh>
+    );
+}
+
+// --- Visual Effects ---
+
+export const ParticleSystem = ({ particles }: { particles: Particle[] }) => {
+    // Using simple meshes for particles. For 1000+ particles, use InstancedMesh. 
+    // For <100, mapping is fine.
+    return (
+        <group>
+            {particles.map(p => (
+                <mesh key={p.id} position={[p.x, p.y, p.z]}>
+                    <boxGeometry args={[0.15, 0.15, 0.15]} />
+                    <meshBasicMaterial color={p.color} transparent opacity={p.life} />
+                </mesh>
+            ))}
+        </group>
+    );
+}
