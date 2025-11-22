@@ -1,0 +1,5 @@
+{
+  "name": "Chef Runner 3D",
+  "description": "An endless runner game where a cartoon chef collects ingredients and avoids kitchen obstacles.",
+  "requestFramePermissions": []
+}
