@@ -1,20 +1,25 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Chef Runner 3D
 
-# Run and deploy your AI Studio app
+An endless-runner prototype: a cartoon chef runs through a kitchen, collects ingredients and dodges obstacles.
 
-This contains everything you need to run your app locally.
+It was a one-shot experiment (November 2025): the whole game was generated in a single prompt with Gemini 3 Pro
+(preview) in Google AI Studio, to see how far one prompt could go with a 3D scene.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1_cIdVschMQfqgZpMeXzTSuZkuPc47HVX
+## Built with
 
-## Run Locally
+React 19, Three.js via React Three Fiber and drei, TypeScript and Vite.
 
-**Prerequisites:**  Node.js
+## Run it locally
 
+Requires Node.js.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+```bash
+npm install
+echo "GEMINI_API_KEY=<your key>" > .env.local   # only needed for the AI Studio features
+npm run dev
+```
+
+---
+
+Versión en español: prototipo de juego de carrera infinita en 3D generado de una sola vez con Gemini 3 Pro (preview)
+en AI Studio, como experimento.
